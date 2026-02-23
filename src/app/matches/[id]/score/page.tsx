@@ -176,9 +176,19 @@ export default function ScorePage() {
   const battingTeamName = teamsMap[battingTeamId] ?? (match?.teamAId === battingTeamId ? "Team A" : "Team B");
   const bowlingTeamName = teamsMap[bowlingTeamId] ?? (match?.teamAId === bowlingTeamId ? "Team A" : "Team B");
 
+  /** Chase complete: second team passed target — show result, no more scoring. */
+  const chaseComplete = isChasingInnings && runsNeeded <= 0 && firstInningsRuns > 0 && !isSuperOver;
+
   useEffect(() => {
     if (shouldEnd.end) setShowInningsOver(true);
   }, [shouldEnd.end]);
+
+  /** When chasing team passes target, show result and prompt to go to scorecard (no need to continue). */
+  useEffect(() => {
+    if (isChasingInnings && runsNeeded <= 0 && firstInningsRuns > 0 && !isSuperOver) {
+      setShowResultModal(true);
+    }
+  }, [isChasingInnings, runsNeeded, firstInningsRuns, isSuperOver]);
 
   const lastSoSelectionInningsRef = useRef<number>(-1);
   useEffect(() => {
@@ -485,7 +495,7 @@ export default function ScorePage() {
             <button
               key={r}
               onClick={() => addBall({ runsOffBat: r })}
-              disabled={sending || !currentBowlerId}
+              disabled={sending || !currentBowlerId || chaseComplete}
               className="min-h-[52px] py-4 rounded-xl bg-cricket-green text-white font-bold text-xl shadow-md active:scale-95 transition-transform touch-manipulation disabled:opacity-50 disabled:active:scale-100"
             >
               {r}
@@ -497,28 +507,28 @@ export default function ScorePage() {
         <div className="grid grid-cols-4 gap-2 mb-4">
           <button
             onClick={() => addBall({ runsOffBat: 0, extras: { type: "WD", runs: rules.wideRuns } })}
-            disabled={sending || !currentBowlerId}
+            disabled={sending || !currentBowlerId || chaseComplete}
             className="min-h-[48px] py-3 rounded-xl bg-amber-500 text-white font-semibold text-sm shadow active:scale-95 touch-manipulation disabled:opacity-50"
           >
             Wide
           </button>
           <button
             onClick={() => addBall({ runsOffBat: 0, extras: { type: "NB", runs: rules.noBallRuns } })}
-            disabled={sending || !currentBowlerId}
+            disabled={sending || !currentBowlerId || chaseComplete}
             className="min-h-[48px] py-3 rounded-xl bg-amber-600 text-white font-semibold text-sm shadow active:scale-95 touch-manipulation disabled:opacity-50"
           >
             No ball
           </button>
           <button
             onClick={() => setShowByesRuns(showByesRuns === "B" ? null : "B")}
-            disabled={sending || !currentBowlerId}
+            disabled={sending || !currentBowlerId || chaseComplete}
             className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow active:scale-95 touch-manipulation ${showByesRuns === "B" ? "ring-2 ring-cricket-green bg-amber-100 text-amber-900" : "bg-amber-100 text-amber-900"}`}
           >
             Byes
           </button>
           <button
             onClick={() => setShowByesRuns(showByesRuns === "LB" ? null : "LB")}
-            disabled={sending || !currentBowlerId}
+            disabled={sending || !currentBowlerId || chaseComplete}
             className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow active:scale-95 touch-manipulation ${showByesRuns === "LB" ? "ring-2 ring-cricket-green bg-amber-50 text-amber-800" : "bg-amber-50 text-amber-800"}`}
           >
             Leg byes
@@ -534,7 +544,7 @@ export default function ScorePage() {
                 <button
                   key={r}
                   onClick={() => addBall({ runsOffBat: 0, extras: { type: showByesRuns, runs: r } })}
-                  disabled={sending}
+                  disabled={sending || chaseComplete}
                   className="w-12 h-12 rounded-lg bg-white border-2 border-amber-300 text-amber-900 font-bold active:scale-95 touch-manipulation"
                 >
                   {r}
@@ -548,7 +558,7 @@ export default function ScorePage() {
         <div className="flex gap-2 flex-wrap">
           <Button
             onClick={() => { setWicketStep(1); setNewBatterId(""); setWicketBatterId(""); setShowWicket(true); }}
-            disabled={sending || !currentBowlerId}
+            disabled={sending || !currentBowlerId || chaseComplete}
             variant="destructive"
             className="min-h-[48px] px-4 rounded-xl"
           >
@@ -848,7 +858,9 @@ export default function ScorePage() {
                 <p className="text-lg font-semibold">{result.message}</p>
                 {result.isSuperOver && <p className="text-sm text-muted-foreground">(Super over)</p>}
                 <DialogFooter className="flex-col gap-2 sm:flex-col">
-                  <Button onClick={confirmEndMatch} disabled={sending} className="w-full h-11">Done</Button>
+                  <Button onClick={confirmEndMatch} disabled={sending} className="w-full h-11">
+                    {result.isTie ? "Done" : "View scorecard"}
+                  </Button>
                   {canGoToSuperOver && (
                     <Button onClick={() => { setShowResultModal(false); setShowSuperOverConfig(true); }} disabled={sending} className="w-full h-11 bg-amber-500 hover:bg-amber-600 text-white">
                       Go to Super Over
