@@ -57,7 +57,7 @@ export default function ScorecardPage() {
     );
   }
 
-  const rules: RulesConfig = match.rulesConfig ?? { oversPerInnings: 20, ballsPerOver: 6, wideRuns: 1, noBallRuns: 1, wideCountsAsBall: true, noBallCountsAsBall: true };
+  const rules: RulesConfig = match.rulesConfig ?? { oversPerInnings: 20, ballsPerOver: 6, wideRuns: 1, noBallRuns: 1, wideCountsAsBall: false, noBallCountsAsBall: false };
   const teamAName = teamsMap[match.teamAId] ?? "Team A";
   const teamBName = teamsMap[match.teamBId] ?? "Team B";
   const getTeamName = (teamId: string) => (match.teamAId === teamId ? teamAName : teamBName);

@@ -112,7 +112,7 @@ export default function ScorePage() {
 
   const currentInnings = match?.innings?.length ? match.innings[match.innings.length - 1] : null;
   const events: BallEvent[] = currentInnings?.events ?? [];
-  const rules: RulesConfig = match?.rulesConfig ?? { oversPerInnings: 20, ballsPerOver: 6, wideRuns: 1, noBallRuns: 1, wideCountsAsBall: true, noBallCountsAsBall: true };
+  const rules: RulesConfig = match?.rulesConfig ?? { oversPerInnings: 20, ballsPerOver: 6, wideRuns: 1, noBallRuns: 1, wideCountsAsBall: false, noBallCountsAsBall: false };
   const battingTeamId = currentInnings?.battingTeamId ?? "";
   const bowlingTeamId = currentInnings?.bowlingTeamId ?? "";
   const defaultBattingOrder = (match?.teamAId === battingTeamId ? match?.playingXI_A : match?.playingXI_B) ?? [];
@@ -547,7 +547,7 @@ export default function ScorePage() {
         {/* Wicket & Undo & End */}
         <div className="flex gap-2 flex-wrap">
           <Button
-            onClick={() => { setWicketStep(1); setNewBatterId(""); setShowWicket(true); }}
+            onClick={() => { setWicketStep(1); setNewBatterId(""); setWicketBatterId(""); setShowWicket(true); }}
             disabled={sending || !currentBowlerId}
             variant="destructive"
             className="min-h-[48px] px-4 rounded-xl"
@@ -906,6 +906,7 @@ export default function ScorePage() {
             setShowWicket(false);
             setWicketStep(1);
             setNewBatterId("");
+            setWicketBatterId("");
           }
         }}
       >
@@ -918,34 +919,57 @@ export default function ScorePage() {
               <>
                 <div className="space-y-2">
                   <Label>Type</Label>
-                  <Select value={wicketKind} onValueChange={(v) => setWicketKind(v as typeof wicketKind)}>
-                    <SelectTrigger className="h-11 rounded-xl">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="BOWLED">Bowled</SelectItem>
-                      <SelectItem value="CAUGHT">Caught</SelectItem>
-                      <SelectItem value="LBW">LBW</SelectItem>
-                      <SelectItem value="RUN_OUT">Run out</SelectItem>
-                      <SelectItem value="STUMPED">Stumped</SelectItem>
-                      <SelectItem value="HIT_WICKET">Hit wicket</SelectItem>
-                      <SelectItem value="RETIRED">Retired</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        ["BOWLED", "Bowled"],
+                        ["CAUGHT", "Caught"],
+                        ["LBW", "LBW"],
+                        ["RUN_OUT", "Run out"],
+                        ["STUMPED", "Stumped"],
+                        ["HIT_WICKET", "Hit wkt"],
+                        ["RETIRED", "Retired"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <Button
+                        key={value}
+                        type="button"
+                        variant={wicketKind === value ? "default" : "outline"}
+                        size="sm"
+                        className="h-9 rounded-xl"
+                        onClick={() => setWicketKind(value)}
+                      >
+                        {label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Batter out</Label>
-                  <Select value={wicketBatterId || "_"} onValueChange={(v) => setWicketBatterId(v === "_" ? "" : v)}>
-                    <SelectTrigger className="h-11 rounded-xl">
-                      <SelectValue placeholder="Select batter" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">Select</SelectItem>
-                      {battingOrder.map((id) => (
-                        <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex flex-wrap gap-2">
+                    {strikerId && (
+                      <Button
+                        type="button"
+                        variant={wicketBatterId === strikerId ? "default" : "outline"}
+                        size="sm"
+                        className="h-10 rounded-xl flex-1 min-w-0"
+                        onClick={() => setWicketBatterId(strikerId)}
+                      >
+                        {playersMap[strikerId] ?? strikerId}
+                      </Button>
+                    )}
+                    {nonStrikerId && nonStrikerId !== strikerId && (
+                      <Button
+                        type="button"
+                        variant={wicketBatterId === nonStrikerId ? "default" : "outline"}
+                        size="sm"
+                        className="h-10 rounded-xl flex-1 min-w-0"
+                        onClick={() => setWicketBatterId(nonStrikerId)}
+                      >
+                        {playersMap[nonStrikerId] ?? nonStrikerId}
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex gap-2 pt-2">
                   <Button variant="outline" onClick={() => setShowWicket(false)} className="flex-1 h-12 rounded-xl">
