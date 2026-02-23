@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 const schema = z.object({
   fullName: z.string().min(1, "Name required"),
   shortName: z.string().optional(),
+  email: z.union([z.string().email("Invalid email"), z.literal("")]).optional().transform((s) => (s === "" ? undefined : s)),
   isKeeper: z.boolean().optional(),
 });
 
@@ -25,7 +26,7 @@ export default function NewPlayerPage() {
   const [error, setError] = useState("");
   const { register, handleSubmit, control, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { isKeeper: false },
+    defaultValues: { isKeeper: false, email: "" },
   });
 
   async function onSubmit(data: FormData) {
@@ -76,6 +77,19 @@ export default function NewPlayerPage() {
                   placeholder="e.g. J. Smith"
                   className="h-11"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email (optional, for future login)</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  {...register("email")}
+                  placeholder="e.g. john@example.com"
+                  className="h-11"
+                />
+                {errors.email && (
+                  <p className="text-sm text-destructive">{errors.email.message}</p>
+                )}
               </div>
               <Controller
                 name="isKeeper"

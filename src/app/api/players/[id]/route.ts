@@ -31,9 +31,20 @@ export async function PUT(
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
     await connectDB();
+    const data = { ...parsed.data } as Record<string, unknown>;
+    if (body.email === "" || body.email === undefined) {
+      delete data.email;
+      const player = await PlayerModel.findByIdAndUpdate(
+        id,
+        { $unset: { email: 1 }, $set: data },
+        { new: true }
+      ).lean();
+      if (!player) return NextResponse.json({ error: "Player not found" }, { status: 404 });
+      return NextResponse.json(player);
+    }
     const player = await PlayerModel.findByIdAndUpdate(
       id,
-      { $set: parsed.data },
+      { $set: data },
       { new: true }
     ).lean();
     if (!player) return NextResponse.json({ error: "Player not found" }, { status: 404 });

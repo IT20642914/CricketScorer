@@ -10,6 +10,7 @@ interface Player {
   _id: string;
   fullName: string;
   shortName?: string;
+  email?: string;
   isKeeper?: boolean;
 }
 
@@ -69,9 +70,14 @@ export default function PlayersPage() {
             {players.map((p) => (
               <Card key={p._id} className="border-0 shadow-card">
                 <Link href={`/players/${p._id}`}>
-                  <CardContent className="flex justify-between items-center py-3.5 px-4">
-                    <span className="font-medium text-foreground truncate pr-2">{p.fullName}</span>
-                    <span className="text-muted-foreground text-sm shrink-0">{p.shortName ?? "—"}</span>
+                  <CardContent className="py-3.5 px-4">
+                    <div className="flex justify-between items-center gap-2">
+                      <span className="font-medium text-foreground truncate flex-1">{p.fullName}</span>
+                      <span className="text-muted-foreground text-sm shrink-0">{p.shortName ?? "—"}</span>
+                    </div>
+                    {p.email && (
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.email}</p>
+                    )}
                   </CardContent>
                 </Link>
               </Card>

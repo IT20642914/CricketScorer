@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 const schema = z.object({
   fullName: z.string().min(1),
   shortName: z.string().optional(),
+  email: z.union([z.string().email("Invalid email"), z.literal("")]).optional().transform((s) => (s === "" ? undefined : s)),
   isKeeper: z.boolean().optional(),
 });
 
@@ -37,7 +38,12 @@ export default function EditPlayerPage() {
         return r.json();
       })
       .then((data) => {
-        reset({ fullName: data.fullName, shortName: data.shortName ?? "", isKeeper: data.isKeeper ?? false });
+        reset({
+          fullName: data.fullName,
+          shortName: data.shortName ?? "",
+          email: data.email ?? "",
+          isKeeper: data.isKeeper ?? false,
+        });
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -88,6 +94,19 @@ export default function EditPlayerPage() {
               <div className="space-y-2">
                 <Label htmlFor="shortName">Short name</Label>
                 <Input id="shortName" {...register("shortName")} className="h-11" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email (optional, for future login)</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  {...register("email")}
+                  placeholder="e.g. john@example.com"
+                  className="h-11"
+                />
+                {errors.email && (
+                  <p className="text-sm text-destructive">{errors.email.message}</p>
+                )}
               </div>
               <Controller
                 name="isKeeper"

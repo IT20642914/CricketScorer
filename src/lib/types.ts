@@ -7,6 +7,8 @@ export interface Player {
   _id: string;
   fullName: string;
   shortName?: string;
+  /** Optional email for future login; when user logs in, profile can show stats (batting/bowling skills, etc.). */
+  email?: string;
   battingStyle?: BattingStyle;
   bowlingStyle?: BowlingStyle;
   isKeeper?: boolean;

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   computeInningsSummary,
   formatOvers,
@@ -41,10 +42,17 @@ interface Player {
   fullName: string;
 }
 
+interface Team {
+  _id: string;
+  teamName: string;
+}
+
 export default function ScorePage() {
+  const router = useRouter();
   const [matchId, setMatchId] = useState<string | null>(null);
   const [match, setMatch] = useState<Match | null>(null);
   const [playersMap, setPlayersMap] = useState<Record<string, string>>({});
+  const [teamsMap, setTeamsMap] = useState<Record<string, string>>({});
   const [currentBowlerId, setCurrentBowlerId] = useState<string>("");
   const [showWicket, setShowWicket] = useState(false);
   const [showNextBowler, setShowNextBowler] = useState(false);
@@ -64,12 +72,14 @@ export default function ScorePage() {
   const [soBowlerId, setSoBowlerId] = useState("");
 
   const loadMatch = useCallback(async (id: string) => {
-    const [mRes, pRes] = await Promise.all([
+    const [mRes, pRes, tRes] = await Promise.all([
       fetch(`/api/matches/${id}`),
       fetch("/api/players"),
+      fetch("/api/teams"),
     ]);
     const m = await mRes.json();
     const players: Player[] = await pRes.json();
+    const teams: Team[] = await tRes.json();
     if (m._id) {
       setMatch(m);
       const inn = m.innings?.[m.innings.length - 1];
@@ -81,6 +91,11 @@ export default function ScorePage() {
       const map: Record<string, string> = {};
       players.forEach((p) => { map[p._id] = p.fullName; });
       setPlayersMap(map);
+    }
+    if (Array.isArray(teams)) {
+      const map: Record<string, string> = {};
+      teams.forEach((t) => { map[t._id] = t.teamName; });
+      setTeamsMap(map);
     }
     setLoading(false);
   }, []);
@@ -150,6 +165,8 @@ export default function ScorePage() {
     : undefined;
   const allowedBowlerIds = excludedBowlerId ? bowlingOrder.filter((id) => id !== excludedBowlerId) : bowlingOrder;
   const superOverRound = inningsIndex >= 2 ? Math.floor((inningsIndex - 2) / 2) + 1 : 1;
+  const battingTeamName = teamsMap[battingTeamId] ?? (match?.teamAId === battingTeamId ? "Team A" : "Team B");
+  const bowlingTeamName = teamsMap[bowlingTeamId] ?? (match?.teamAId === bowlingTeamId ? "Team A" : "Team B");
 
   useEffect(() => {
     if (shouldEnd.end) setShowInningsOver(true);
@@ -549,8 +566,8 @@ export default function ScorePage() {
           <TabsContent value="batting" className="mt-0">
           <div className="bg-white rounded-2xl shadow-lg border border-cricket-green/10 overflow-hidden">
             <div className="bg-cricket-green text-white px-4 py-2.5">
-              <h2 className="font-bold text-sm">Batting</h2>
-              <p className="text-xs text-white/80">{summary?.totalRuns ?? 0}/{summary?.wickets ?? 0} in {overStr} overs</p>
+              <h2 className="font-bold text-sm">Batting – {battingTeamName}{isSuperOver ? " (Super Over)" : ""}</h2>
+              <p className="text-xs text-white/90">{summary?.totalRuns ?? 0}/{summary?.wickets ?? 0} in {overStr} overs</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[320px]">
@@ -592,8 +609,8 @@ export default function ScorePage() {
           <TabsContent value="bowling" className="mt-0">
           <div className="bg-white rounded-2xl shadow-lg border border-cricket-green/10 overflow-hidden">
             <div className="bg-cricket-green text-white px-4 py-2.5">
-              <h2 className="font-bold text-sm">Bowling</h2>
-              <p className="text-xs text-white/80">{summary?.totalRuns ?? 0}/{summary?.wickets ?? 0} in {overStr} overs</p>
+              <h2 className="font-bold text-sm">Bowling – {bowlingTeamName}{isSuperOver ? " (Super Over)" : ""}</h2>
+              <p className="text-xs text-white/90">{summary?.totalRuns ?? 0}/{summary?.wickets ?? 0} in {overStr} overs</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm min-w-[280px]">
@@ -629,8 +646,13 @@ export default function ScorePage() {
       </main>
 
       {/* Super Over: select who bats and who bowls before scoring */}
-      <Dialog open={needSuperOverSelection} onOpenChange={() => {}}>
-        <DialogContent className="max-w-sm sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+      <Dialog
+        open={needSuperOverSelection}
+        onOpenChange={(open) => {
+          if (!open && matchId) router.push(`/matches/${matchId}/scorecard`);
+        }}
+      >
+        <DialogContent className="max-w-sm sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-primary">
               Super Over {superOverRound} – Select team
@@ -643,61 +665,76 @@ export default function ScorePage() {
             <p>• More runs wins. If tied, another Super Over is played until there is a winner.</p>
           </div>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Striker (facing)</Label>
-              <Select value={soStrikerId || "_"} onValueChange={(v) => setSoStrikerId(v === "_" ? "" : v)}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Select batsman" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">Select</SelectItem>
-                  {defaultBattingOrder.filter((id) => id !== soNonStrikerId).map((id) => (
-                    <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+              <p className="text-xs font-semibold text-primary mb-3">Batting – {battingTeamName}</p>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Striker (facing)</Label>
+                  <Select value={soStrikerId || "_"} onValueChange={(v) => setSoStrikerId(v === "_" ? "" : v)}>
+                    <SelectTrigger className="h-11 rounded-xl">
+                      <SelectValue placeholder="Select batsman" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[100]">
+                      <SelectItem value="_">Select</SelectItem>
+                      {defaultBattingOrder.filter((id) => id !== soNonStrikerId).map((id) => (
+                        <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Non-striker</Label>
+                  <Select value={soNonStrikerId || "_"} onValueChange={(v) => setSoNonStrikerId(v === "_" ? "" : v)}>
+                    <SelectTrigger className="h-11 rounded-xl">
+                      <SelectValue placeholder="Select batsman" />
+                    </SelectTrigger>
+                    <SelectContent className="z-[100]">
+                      <SelectItem value="_">Select</SelectItem>
+                      {defaultBattingOrder.filter((id) => id !== soStrikerId).map((id) => (
+                        <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Non-striker</Label>
-              <Select value={soNonStrikerId || "_"} onValueChange={(v) => setSoNonStrikerId(v === "_" ? "" : v)}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Select batsman" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">Select</SelectItem>
-                  {defaultBattingOrder.filter((id) => id !== soStrikerId).map((id) => (
-                    <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Bowler</Label>
-              {excludedBowlerId && (
-                <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-2 py-1">
-                  {playersMap[excludedBowlerId] ?? "Same bowler"} cannot bowl (bowled in previous Super Over).
-                </p>
-              )}
-              <Select value={soBowlerId || "_"} onValueChange={(v) => setSoBowlerId(v === "_" ? "" : v)}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Select bowler" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">Select</SelectItem>
-                  {allowedBowlerIds.map((id) => (
-                    <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
+              <p className="text-xs font-semibold text-primary mb-2">Bowling – {bowlingTeamName}</p>
+              <div className="space-y-2">
+                {excludedBowlerId && (
+                  <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-2 py-1">
+                    {playersMap[excludedBowlerId] ?? "Same bowler"} cannot bowl (bowled in previous Super Over).
+                  </p>
+                )}
+                <Select value={soBowlerId || "_"} onValueChange={(v) => setSoBowlerId(v === "_" ? "" : v)}>
+                  <SelectTrigger className="h-11 rounded-xl">
+                    <SelectValue placeholder="Select bowler" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[100]">
+                    <SelectItem value="_">Select</SelectItem>
+                    {allowedBowlerIds.map((id) => (
+                      <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
-          <DialogFooter className="gap-2 sm:gap-2 pt-4">
+          <DialogFooter className="gap-2 sm:gap-2 pt-4 flex-col sm:flex-row">
             <Button
               onClick={saveSuperOverSelection}
               disabled={sending || !soStrikerId || !soNonStrikerId || soStrikerId === soNonStrikerId || !soBowlerId}
               className="w-full h-11"
             >
               Start over
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-11"
+              onClick={() => matchId && router.push(`/matches/${matchId}/scorecard`)}
+            >
+              Cancel
             </Button>
           </DialogFooter>
         </DialogContent>
