@@ -250,69 +250,101 @@ export default function NewMatchPage() {
         {step === 3 && (
           <>
             <div className="space-y-2">
-              <Label htmlFor="overs">Overs per innings</Label>
-              <Input
-                id="overs"
-                type="number"
-                min={1}
-                value={state.rules.oversPerInnings}
-                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, oversPerInnings: +e.target.value || 20 } }))}
-                className="h-11"
-              />
+              <Label>Overs per innings</Label>
+              <div className="flex flex-wrap gap-2">
+                {([5, 10, 20] as const).map((n) => (
+                  <Button
+                    key={n}
+                    type="button"
+                    variant={state.rules.oversPerInnings === n ? "default" : "outline"}
+                    size="sm"
+                    className="h-9 rounded-xl"
+                    onClick={() => setState((s) => ({ ...s, rules: { ...s.rules, oversPerInnings: n } }))}
+                  >
+                    {n}
+                  </Button>
+                ))}
+                <Button
+                  type="button"
+                  variant={[5, 10, 20].includes(state.rules.oversPerInnings) ? "outline" : "default"}
+                  size="sm"
+                  className="h-9 rounded-xl"
+                  onClick={() => setState((s) => ({
+                    ...s,
+                    rules: {
+                      ...s.rules,
+                      oversPerInnings: [5, 10, 20].includes(s.rules.oversPerInnings) ? 15 : s.rules.oversPerInnings,
+                    },
+                  }))}
+                >
+                  Custom
+                </Button>
+              </div>
+              {![5, 10, 20].includes(state.rules.oversPerInnings) && (
+                <Input
+                  type="number"
+                  min={1}
+                  value={state.rules.oversPerInnings}
+                  onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, oversPerInnings: Math.max(1, +e.target.value || 1) } }))}
+                  className="h-9 w-24 rounded-xl"
+                  placeholder="Enter"
+                />
+              )}
             </div>
             <div className="space-y-2">
               <Label>Balls per over</Label>
-              <Select
-                value={String(state.rules.ballsPerOver)}
-                onValueChange={(v) => setState((s) => ({ ...s, rules: { ...s.rules, ballsPerOver: +v } }))}
-              >
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[4, 5, 6, 8].map((n) => (
-                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap gap-2">
+                {([4, 5, 6, 8] as const).map((n) => (
+                  <Button
+                    key={n}
+                    type="button"
+                    variant={state.rules.ballsPerOver === n ? "default" : "outline"}
+                    size="sm"
+                    className="h-9 rounded-xl"
+                    onClick={() => setState((s) => ({ ...s, rules: { ...s.rules, ballsPerOver: n } }))}
+                  >
+                    {n}
+                  </Button>
+                ))}
+              </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="wideRuns">Wide runs</Label>
+              <Label htmlFor="wideRuns">Wide runs (default 1)</Label>
               <Input
                 id="wideRuns"
                 type="number"
                 min={0}
                 value={state.rules.wideRuns}
-                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, wideRuns: +e.target.value || 0 } }))}
+                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, wideRuns: +e.target.value || 1 } }))}
                 className="h-11"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="noBallRuns">No-ball runs</Label>
+              <Label htmlFor="noBallRuns">No-ball runs (default 1)</Label>
               <Input
                 id="noBallRuns"
                 type="number"
                 min={0}
                 value={state.rules.noBallRuns}
-                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, noBallRuns: +e.target.value || 0 } }))}
+                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, noBallRuns: +e.target.value || 1 } }))}
                 className="h-11"
               />
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2">
               <Checkbox
                 id="wideCounts"
                 checked={state.rules.wideCountsAsBall}
                 onCheckedChange={(checked) => setState((s) => ({ ...s, rules: { ...s.rules, wideCountsAsBall: !!checked } }))}
               />
-              <Label htmlFor="wideCounts" className="cursor-pointer font-normal">Wide counts as ball</Label>
+              <Label htmlFor="wideCounts" className="cursor-pointer font-normal text-sm">Wide counts as ball</Label>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2">
               <Checkbox
                 id="nbCounts"
                 checked={state.rules.noBallCountsAsBall}
                 onCheckedChange={(checked) => setState((s) => ({ ...s, rules: { ...s.rules, noBallCountsAsBall: !!checked } }))}
               />
-              <Label htmlFor="nbCounts" className="cursor-pointer font-normal">No-ball counts as ball</Label>
+              <Label htmlFor="nbCounts" className="cursor-pointer font-normal text-sm">No-ball counts as ball</Label>
             </div>
           </>
         )}
@@ -321,29 +353,53 @@ export default function NewMatchPage() {
           <>
             <div className="space-y-2">
               <Label>Toss winner</Label>
-              <Select value={state.tossWinnerTeamId || "_"} onValueChange={(v) => setState((s) => ({ ...s, tossWinnerTeamId: v === "_" ? "" : v }))}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Select team" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">Select</SelectItem>
-                  {teamA && <SelectItem value={state.teamAId!}>{teamA.teamName}</SelectItem>}
-                  {teamB && <SelectItem value={state.teamBId!}>{teamB.teamName}</SelectItem>}
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap gap-2">
+                {teamA && (
+                  <Button
+                    type="button"
+                    variant={state.tossWinnerTeamId === state.teamAId ? "default" : "outline"}
+                    size="sm"
+                    className="h-10 rounded-xl flex-1 min-w-0"
+                    onClick={() => setState((s) => ({ ...s, tossWinnerTeamId: state.teamAId }))}
+                  >
+                    {teamA.teamName}
+                  </Button>
+                )}
+                {teamB && (
+                  <Button
+                    type="button"
+                    variant={state.tossWinnerTeamId === state.teamBId ? "default" : "outline"}
+                    size="sm"
+                    className="h-10 rounded-xl flex-1 min-w-0"
+                    onClick={() => setState((s) => ({ ...s, tossWinnerTeamId: state.teamBId }))}
+                  >
+                    {teamB.teamName}
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Decision</Label>
-              <Select value={state.tossDecision || "_"} onValueChange={(v) => setState((s) => ({ ...s, tossDecision: (v === "_" ? "" : v) as "BAT" | "FIELD" }))}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Bat or Field" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">Select</SelectItem>
-                  <SelectItem value="BAT">Bat</SelectItem>
-                  <SelectItem value="FIELD">Field</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant={state.tossDecision === "BAT" ? "default" : "outline"}
+                  size="sm"
+                  className="h-10 rounded-xl flex-1"
+                  onClick={() => setState((s) => ({ ...s, tossDecision: "BAT" as const }))}
+                >
+                  Bat
+                </Button>
+                <Button
+                  type="button"
+                  variant={state.tossDecision === "FIELD" ? "default" : "outline"}
+                  size="sm"
+                  className="h-10 rounded-xl flex-1"
+                  onClick={() => setState((s) => ({ ...s, tossDecision: "FIELD" as const }))}
+                >
+                  Field
+                </Button>
+              </div>
             </div>
           </>
         )}

@@ -13,8 +13,8 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Touch-friendly tap targets */
-button, a, [role="button"] {
+/* Touch-friendly tap targets (exclude checkboxes so they stay compact) */
+button:not([role="checkbox"]), a, [role="button"]:not([role="checkbox"]) {
   @apply min-h-touch min-w-[44px];
 }
 

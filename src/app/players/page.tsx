@@ -41,7 +41,7 @@ export default function PlayersPage() {
           <Link href="/players/new">Add</Link>
         </Button>
       </header>
-      <main className="p-4 max-w-lg mx-auto">
+      <main className="p-4 max-w-3xl mx-auto">
         <div className="relative mb-4">
           <Input
             type="search"
@@ -66,23 +66,38 @@ export default function PlayersPage() {
             </CardContent>
           </Card>
         ) : (
-          <ul className="space-y-2">
-            {players.map((p) => (
-              <Card key={p._id} className="border-0 shadow-card">
-                <Link href={`/players/${p._id}`}>
-                  <CardContent className="py-3.5 px-4">
-                    <div className="flex justify-between items-center gap-2">
-                      <span className="font-medium text-foreground truncate flex-1">{p.fullName}</span>
-                      <span className="text-muted-foreground text-sm shrink-0">{p.shortName ?? "—"}</span>
-                    </div>
-                    {p.email && (
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.email}</p>
-                    )}
-                  </CardContent>
-                </Link>
-              </Card>
-            ))}
-          </ul>
+          <Card className="border-0 shadow-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="text-left py-3 px-4 font-semibold text-foreground">Full name</th>
+                    <th className="text-left py-3 px-4 font-semibold text-foreground">Short name</th>
+                    <th className="text-left py-3 px-4 font-semibold text-foreground hidden sm:table-cell">Email</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground w-24">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {players.map((p) => (
+                    <tr key={p._id} className="border-b border-border/80 hover:bg-muted/30 transition-colors">
+                      <td className="py-3 px-4">
+                        <Link href={`/players/${p._id}`} className="font-medium text-foreground hover:underline">
+                          {p.fullName}
+                        </Link>
+                      </td>
+                      <td className="py-3 px-4 text-muted-foreground">{p.shortName ?? "—"}</td>
+                      <td className="py-3 px-4 text-muted-foreground hidden sm:table-cell truncate max-w-[180px]">{p.email ?? "—"}</td>
+                      <td className="py-3 px-4 text-right">
+                        <Button variant="ghost" size="sm" className="h-8 text-muted-foreground" asChild>
+                          <Link href={`/players/${p._id}/edit`}>Edit</Link>
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         )}
       </main>
     </div>

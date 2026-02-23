@@ -60,6 +60,8 @@ export default function ScorePage() {
   const [showByesRuns, setShowByesRuns] = useState<"B" | "LB" | null>(null);
   const [wicketKind, setWicketKind] = useState<"BOWLED" | "CAUGHT" | "LBW" | "RUN_OUT" | "STUMPED" | "HIT_WICKET" | "RETIRED">("BOWLED");
   const [wicketBatterId, setWicketBatterId] = useState("");
+  const [wicketStep, setWicketStep] = useState<1 | 2>(1);
+  const [newBatterId, setNewBatterId] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [activeTab, setActiveTab] = useState<"score" | "batting" | "bowling">("score");
@@ -127,6 +129,8 @@ export default function ScorePage() {
 
   const totalBallsBowled = summary?.totalBallsBowled ?? 0;
   const overJustFinished = totalBallsBowled > 0 && totalBallsBowled % effectiveBallsPerOver === 0;
+  /** Can only change bowler when 0 balls bowled in current over (start or after over complete). */
+  const canChangeBowler = totalBallsBowled % effectiveBallsPerOver === 0;
 
   useEffect(() => {
     if (overJustFinished) setShowNextBowler(true);
@@ -148,6 +152,10 @@ export default function ScorePage() {
   const requiredRR = ballsLeft > 0 ? (runsNeeded / (ballsLeft / effectiveBallsPerOver)) : 0;
 
   const shouldEnd = currentInnings ? shouldEndInnings(events, rules, battingOrder, currentInnings.maxOvers, effectiveBallsPerOver, currentInnings.maxWickets) : { end: false };
+
+  /** Batters who have not batted yet (next in order and after). Used for "new batter" selection after wicket. */
+  const nextManIdx = 2 + (summary?.wickets ?? 0);
+  const notYetBatted = battingOrder.slice(nextManIdx);
 
   /** Super Over: must select 2 batsmen + 1 bowler before scoring (for SO1 and SO2, and any further Super Overs). */
   const needSuperOverSelection =
@@ -214,9 +222,30 @@ export default function ScorePage() {
     }
   }
 
-  async function addBall(payload: { runsOffBat: number; extras?: { type: "WD" | "NB" | "B" | "LB" | null; runs: number }; wicket?: { kind: string; batterOutId: string; fielderId?: string } }) {
+  async function addBall(payload: { runsOffBat: number; extras?: { type: "WD" | "NB" | "B" | "LB" | null; runs: number }; wicket?: { kind: string; batterOutId: string; fielderId?: string }; newBatterId?: string }) {
     if (!matchId || sending) return;
     setSending(true);
+    // If wicket + new batter selected: update batting order so selected batter is next, then add wicket event
+    if (payload.wicket && payload.newBatterId && match) {
+      const newOrder = battingOrder.slice(0, nextManIdx).concat(payload.newBatterId).concat(battingOrder.slice(nextManIdx).filter((id) => id !== payload.newBatterId));
+      const updatedInnings = [...(match.innings ?? [])];
+      const lastIdx = updatedInnings.length - 1;
+      if (lastIdx >= 0 && updatedInnings[lastIdx]) {
+        updatedInnings[lastIdx] = { ...updatedInnings[lastIdx], battingOrderOverride: newOrder };
+      }
+      try {
+        const patchRes = await fetch(`/api/matches/${matchId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ innings: updatedInnings }),
+        });
+        const patchData = await patchRes.json();
+        if (patchData._id) setMatch(patchData);
+      } catch (_) {
+        setSending(false);
+        return;
+      }
+    }
     const body = {
       strikerId,
       nonStrikerId,
@@ -233,6 +262,8 @@ export default function ScorePage() {
     const data = await res.json();
     if (data.match) setMatch(data.match);
     setShowWicket(false);
+    setWicketStep(1);
+    setNewBatterId("");
     setShowByesRuns(null);
     setSending(false);
   }
@@ -315,9 +346,12 @@ export default function ScorePage() {
       body: JSON.stringify({ status: "COMPLETED" }),
     });
     const data = await res.json();
-    if (data._id) setMatch(data);
-    setShowResultModal(false);
-    setShowInningsOver(false);
+    if (data._id) {
+      setMatch(data);
+      setShowResultModal(false);
+      setShowInningsOver(false);
+      router.push(`/matches/${matchId}/scorecard`);
+    }
     setSending(false);
   }
 
@@ -428,14 +462,21 @@ export default function ScorePage() {
         {/* Striker & bowler */}
         <div className="flex items-center justify-between mb-4 px-1 text-sm">
           <span className="text-gray-600">Striker: <span className="font-semibold text-gray-900">{playersMap[strikerId] ?? strikerId}</span></span>
-          <button
-            type="button"
-            onClick={() => setShowNextBowler(true)}
-            className="text-left py-1 pr-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 touch-manipulation"
-          >
-            <span className="text-gray-600">Bowler: </span>
-            <span className="font-semibold text-cricket-green underline decoration-dotted">{(playersMap[currentBowlerId] ?? currentBowlerId) || "Tap to set"}</span>
-          </button>
+          {canChangeBowler ? (
+            <button
+              type="button"
+              onClick={() => setShowNextBowler(true)}
+              className="text-left py-1 pr-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 touch-manipulation"
+            >
+              <span className="text-gray-600">Bowler: </span>
+              <span className="font-semibold text-cricket-green underline decoration-dotted">{(playersMap[currentBowlerId] ?? currentBowlerId) || "Tap to set"}</span>
+            </button>
+          ) : (
+            <div className="py-1 pr-2">
+              <span className="text-gray-600">Bowler: </span>
+              <span className="font-semibold text-gray-900">{(playersMap[currentBowlerId] ?? currentBowlerId) || "—"}</span>
+            </div>
+          )}
         </div>
 
         {/* Runs: 0 1 2 3 4 6 */}
@@ -506,7 +547,7 @@ export default function ScorePage() {
         {/* Wicket & Undo & End */}
         <div className="flex gap-2 flex-wrap">
           <Button
-            onClick={() => setShowWicket(true)}
+            onClick={() => { setWicketStep(1); setNewBatterId(""); setShowWicket(true); }}
             disabled={sending || !currentBowlerId}
             variant="destructive"
             className="min-h-[48px] px-4 rounded-xl"
@@ -747,16 +788,21 @@ export default function ScorePage() {
             <SheetTitle className="text-primary">{overJustFinished ? "Over complete" : "Change bowler"}</SheetTitle>
           </SheetHeader>
           <div className="p-4 max-h-64 overflow-y-auto space-y-2">
-            {bowlingOrder.map((id) => (
-              <Button
-                key={id}
-                variant={currentBowlerId === id ? "default" : "secondary"}
-                className="w-full justify-start h-12 rounded-xl"
-                onClick={() => selectNextBowler(id)}
-              >
-                {playersMap[id] ?? id}
-              </Button>
-            ))}
+            {bowlingOrder
+              .filter((id) => id !== currentBowlerId)
+              .map((id) => (
+                <Button
+                  key={id}
+                  variant="secondary"
+                  className="w-full justify-start h-12 rounded-xl"
+                  onClick={() => selectNextBowler(id)}
+                >
+                  {playersMap[id] ?? id}
+                </Button>
+              ))}
+            {bowlingOrder.filter((id) => id !== currentBowlerId).length === 0 && (
+              <p className="text-sm text-muted-foreground">No other bowler available.</p>
+            )}
           </div>
         </SheetContent>
       </Sheet>
@@ -853,56 +899,114 @@ export default function ScorePage() {
       </Dialog>
 
       {/* Wicket sheet */}
-      <Sheet open={showWicket} onOpenChange={(open) => !open && setShowWicket(false)}>
+      <Sheet
+        open={showWicket}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowWicket(false);
+            setWicketStep(1);
+            setNewBatterId("");
+          }
+        }}
+      >
         <SheetContent side="bottom" className="rounded-t-2xl">
           <SheetHeader>
-            <SheetTitle>Wicket</SheetTitle>
+            <SheetTitle>{wicketStep === 1 ? "Wicket" : "New batter"}</SheetTitle>
           </SheetHeader>
           <div className="p-4 space-y-4">
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <Select value={wicketKind} onValueChange={(v) => setWicketKind(v as typeof wicketKind)}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="BOWLED">Bowled</SelectItem>
-                  <SelectItem value="CAUGHT">Caught</SelectItem>
-                  <SelectItem value="LBW">LBW</SelectItem>
-                  <SelectItem value="RUN_OUT">Run out</SelectItem>
-                  <SelectItem value="STUMPED">Stumped</SelectItem>
-                  <SelectItem value="HIT_WICKET">Hit wicket</SelectItem>
-                  <SelectItem value="RETIRED">Retired</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Batter out</Label>
-              <Select value={wicketBatterId || "_"} onValueChange={(v) => setWicketBatterId(v === "_" ? "" : v)}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Select batter" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_">Select</SelectItem>
-                  {battingOrder.map((id) => (
-                    <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" onClick={() => setShowWicket(false)} className="flex-1 h-12 rounded-xl">
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => wicketBatterId && addBall({ runsOffBat: 0, wicket: { kind: wicketKind, batterOutId: wicketBatterId } })}
-                disabled={!wicketBatterId || sending}
-                className="flex-1 h-12 rounded-xl"
-              >
-                Add wicket
-              </Button>
-            </div>
+            {wicketStep === 1 && (
+              <>
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <Select value={wicketKind} onValueChange={(v) => setWicketKind(v as typeof wicketKind)}>
+                    <SelectTrigger className="h-11 rounded-xl">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BOWLED">Bowled</SelectItem>
+                      <SelectItem value="CAUGHT">Caught</SelectItem>
+                      <SelectItem value="LBW">LBW</SelectItem>
+                      <SelectItem value="RUN_OUT">Run out</SelectItem>
+                      <SelectItem value="STUMPED">Stumped</SelectItem>
+                      <SelectItem value="HIT_WICKET">Hit wicket</SelectItem>
+                      <SelectItem value="RETIRED">Retired</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Batter out</Label>
+                  <Select value={wicketBatterId || "_"} onValueChange={(v) => setWicketBatterId(v === "_" ? "" : v)}>
+                    <SelectTrigger className="h-11 rounded-xl">
+                      <SelectValue placeholder="Select batter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">Select</SelectItem>
+                      {battingOrder.map((id) => (
+                        <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setShowWicket(false)} className="flex-1 h-12 rounded-xl">
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => wicketBatterId && setWicketStep(2)}
+                    disabled={!wicketBatterId}
+                    className="flex-1 h-12 rounded-xl"
+                  >
+                    Next
+                  </Button>
+                </div>
+              </>
+            )}
+            {wicketStep === 2 && (
+              <>
+                <p className="text-sm text-muted-foreground">Select the new batter (not yet batted)</p>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {notYetBatted.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No batters left (innings will end).</p>
+                  ) : (
+                    notYetBatted.map((id) => (
+                      <Button
+                        key={id}
+                        variant={newBatterId === id ? "default" : "outline"}
+                        className="w-full justify-start h-12 rounded-xl"
+                        onClick={() => setNewBatterId(id)}
+                      >
+                        {playersMap[id] ?? id}
+                      </Button>
+                    ))
+                  )}
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setWicketStep(1)} className="flex-1 h-12 rounded-xl">
+                    Back
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      if (!wicketBatterId) return;
+                      if (notYetBatted.length === 0) {
+                        addBall({ runsOffBat: 0, wicket: { kind: wicketKind, batterOutId: wicketBatterId } });
+                      } else if (newBatterId) {
+                        addBall({
+                          runsOffBat: 0,
+                          wicket: { kind: wicketKind, batterOutId: wicketBatterId },
+                          newBatterId,
+                        });
+                      }
+                    }}
+                    disabled={sending || (notYetBatted.length > 0 && !newBatterId)}
+                    className="flex-1 h-12 rounded-xl"
+                  >
+                    Confirm wicket
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </SheetContent>
       </Sheet>
