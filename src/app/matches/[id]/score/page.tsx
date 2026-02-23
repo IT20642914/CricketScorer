@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import {
   computeInningsSummary,
@@ -58,6 +58,10 @@ export default function ScorePage() {
   const [showResultModal, setShowResultModal] = useState(false);
   const [showSuperOverConfig, setShowSuperOverConfig] = useState(false);
   const [superOverBallsPerOver, setSuperOverBallsPerOver] = useState(6);
+  /** Super Over: selection before scoring (who bats, who bowls) */
+  const [soStrikerId, setSoStrikerId] = useState("");
+  const [soNonStrikerId, setSoNonStrikerId] = useState("");
+  const [soBowlerId, setSoBowlerId] = useState("");
 
   const loadMatch = useCallback(async (id: string) => {
     const [mRes, pRes] = await Promise.all([
@@ -70,7 +74,8 @@ export default function ScorePage() {
       setMatch(m);
       const inn = m.innings?.[m.innings.length - 1];
       const bowl = m.teamAId === (inn?.bowlingTeamId) ? (m.playingXI_A ?? []) : (m.playingXI_B ?? []);
-      if (bowl[0]) setCurrentBowlerId((prev) => prev || bowl[0]);
+      if (inn?.initialBowlerId) setCurrentBowlerId(inn.initialBowlerId);
+      else if (bowl[0]) setCurrentBowlerId((prev) => prev || bowl[0]);
     }
     if (Array.isArray(players)) {
       const map: Record<string, string> = {};
@@ -93,7 +98,8 @@ export default function ScorePage() {
   const rules: RulesConfig = match?.rulesConfig ?? { oversPerInnings: 20, ballsPerOver: 6, wideRuns: 1, noBallRuns: 1, wideCountsAsBall: true, noBallCountsAsBall: true };
   const battingTeamId = currentInnings?.battingTeamId ?? "";
   const bowlingTeamId = currentInnings?.bowlingTeamId ?? "";
-  const battingOrder = (match?.teamAId === battingTeamId ? match?.playingXI_A : match?.playingXI_B) ?? [];
+  const defaultBattingOrder = (match?.teamAId === battingTeamId ? match?.playingXI_A : match?.playingXI_B) ?? [];
+  const battingOrder = (currentInnings?.battingOrderOverride?.length ? currentInnings.battingOrderOverride : defaultBattingOrder) as string[];
   const bowlingOrder = (match?.teamAId === bowlingTeamId ? match?.playingXI_A : match?.playingXI_B) ?? [];
 
   const effectiveBallsPerOver = currentInnings?.ballsPerOver ?? rules.ballsPerOver;
@@ -101,7 +107,7 @@ export default function ScorePage() {
   const battingCard = currentInnings ? computeBattingCard(events, battingOrder) : [];
   const bowlingFigures = currentInnings ? computeBowlingFigures(events, rules, bowlingOrder, effectiveBallsPerOver).filter((f) => f.overs > 0 || f.balls > 0) : [];
   const { strikerId, nonStrikerId } = currentInnings
-    ? getCurrentBattersSimple(events, battingOrder, rules)
+    ? getCurrentBattersSimple(events, battingOrder, { ...rules, ballsPerOver: effectiveBallsPerOver })
     : { strikerId: "", nonStrikerId: "" };
 
   const totalBallsBowled = summary?.totalBallsBowled ?? 0;
@@ -128,9 +134,60 @@ export default function ScorePage() {
 
   const shouldEnd = currentInnings ? shouldEndInnings(events, rules, battingOrder, currentInnings.maxOvers, effectiveBallsPerOver, currentInnings.maxWickets) : { end: false };
 
+  /** Super Over: must select 2 batsmen + 1 bowler before scoring (for SO1 and SO2, and any further Super Overs). */
+  const needSuperOverSelection =
+    isSuperOver &&
+    events.length === 0 &&
+    (!(currentInnings?.battingOrderOverride && currentInnings.battingOrderOverride.length >= 2) || !currentInnings?.initialBowlerId);
+
+  /** Same bowler cannot bowl 2 consecutive Super Overs: exclude who bowled in the previous SO for this team. */
+  const previousSOForBowlingTeam = (match?.innings ?? [])
+    .slice(0, -1)
+    .reverse()
+    .find((inn) => inn.maxOvers === 1 && inn.bowlingTeamId === bowlingTeamId);
+  const excludedBowlerId = previousSOForBowlingTeam
+    ? (previousSOForBowlingTeam.initialBowlerId ?? (previousSOForBowlingTeam.events?.length ? previousSOForBowlingTeam.events[previousSOForBowlingTeam.events.length - 1]?.bowlerId : undefined))
+    : undefined;
+  const allowedBowlerIds = excludedBowlerId ? bowlingOrder.filter((id) => id !== excludedBowlerId) : bowlingOrder;
+  const superOverRound = inningsIndex >= 2 ? Math.floor((inningsIndex - 2) / 2) + 1 : 1;
+
   useEffect(() => {
     if (shouldEnd.end) setShowInningsOver(true);
   }, [shouldEnd.end]);
+
+  const lastSoSelectionInningsRef = useRef<number>(-1);
+  useEffect(() => {
+    if (needSuperOverSelection && inningsIndex !== lastSoSelectionInningsRef.current) {
+      lastSoSelectionInningsRef.current = inningsIndex;
+      setSoStrikerId("");
+      setSoNonStrikerId("");
+      setSoBowlerId("");
+    }
+  }, [needSuperOverSelection, inningsIndex]);
+
+  async function saveSuperOverSelection() {
+    if (!matchId || !match || !currentInnings || sending) return;
+    if (!soStrikerId || !soNonStrikerId || soStrikerId === soNonStrikerId || !soBowlerId) return;
+    setSending(true);
+    const restBatting = defaultBattingOrder.filter((id) => id !== soStrikerId && id !== soNonStrikerId);
+    const battingOrderOverride = [soStrikerId, soNonStrikerId, ...restBatting];
+    const updatedInnings = [...(match.innings ?? [])];
+    const lastIdx = updatedInnings.length - 1;
+    if (lastIdx >= 0) {
+      updatedInnings[lastIdx] = { ...updatedInnings[lastIdx]!, battingOrderOverride, initialBowlerId: soBowlerId };
+    }
+    const res = await fetch(`/api/matches/${matchId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ innings: updatedInnings }),
+    });
+    const data = await res.json();
+    if (data._id) {
+      setMatch(data);
+      setCurrentBowlerId(soBowlerId);
+    }
+    setSending(false);
+  }
 
   async function addBall(payload: { runsOffBat: number; extras?: { type: "WD" | "NB" | "B" | "LB" | null; runs: number }; wicket?: { kind: string; batterOutId: string; fielderId?: string } }) {
     if (!matchId || sending) return;
@@ -197,12 +254,12 @@ export default function ScorePage() {
     setShowNextBowler(false);
   }
 
-  /** Compute result for display (who won or tie). Uses last two innings for main or super over. */
+  /** Compute result for display (who won or tie). Uses last two innings for main or super over; supports multiple Super Over pairs. */
   function getMatchResult(): { message: string; isTie: boolean; isSuperOver?: boolean } {
     const inns = match?.innings ?? [];
-    const isSO = inns.length >= 4;
-    const first = isSO ? inns[2] : inns[0];
-    const second = isSO ? inns[3] : inns[1];
+    const isSO = inns.length >= 4 && (inns[inns.length - 1]?.maxOvers === 1);
+    const first = isSO ? inns[inns.length - 2]! : inns[0];
+    const second = isSO ? inns[inns.length - 1]! : inns[1];
     if (!first || !second) return { message: "", isTie: false };
     const bpo1 = first.ballsPerOver ?? rules.ballsPerOver;
     const bpo2 = second.ballsPerOver ?? rules.ballsPerOver;
@@ -249,12 +306,12 @@ export default function ScorePage() {
     if (!firstInn) { setSending(false); return; }
     const teamBatFirst = firstInn.battingTeamId;
     const teamBowlFirst = firstInn.bowlingTeamId;
+    // Add only Super Over 1; Super Over 2 is added when user clicks "Start Super Over 2" (via endInnings)
     const so1 = { battingTeamId: teamBowlFirst, bowlingTeamId: teamBatFirst, events: [] as BallEvent[], maxOvers: 1, ballsPerOver, maxWickets: 2 };
-    const so2 = { battingTeamId: teamBatFirst, bowlingTeamId: teamBowlFirst, events: [] as BallEvent[], maxOvers: 1, ballsPerOver, maxWickets: 2 };
     const res = await fetch(`/api/matches/${matchId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ innings: [...(match.innings ?? []), so1, so2], status: "IN_PROGRESS" }),
+      body: JSON.stringify({ innings: [...(match.innings ?? []), so1], status: "IN_PROGRESS" }),
     });
     const data = await res.json();
     if (data._id) {
@@ -298,6 +355,11 @@ export default function ScorePage() {
       </header>
 
       <main className="p-4 max-w-lg mx-auto">
+        {needSuperOverSelection ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-800">
+            <p className="font-medium">Select the two batsmen and the bowler in the dialog above to start this Super Over.</p>
+          </div>
+        ) : (
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "score" | "batting" | "bowling")} className="space-y-4">
           <TabsList className="grid w-full grid-cols-3 bg-muted p-1 rounded-xl h-12">
             <TabsTrigger value="score" className="rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary">Score</TabsTrigger>
@@ -555,7 +617,80 @@ export default function ScorePage() {
           </div>
           </TabsContent>
         </Tabs>
+        )}
       </main>
+
+      {/* Super Over: select who bats and who bowls before scoring */}
+      <Dialog open={needSuperOverSelection} onOpenChange={() => {}}>
+        <DialogContent className="max-w-sm sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-primary">
+              Super Over {superOverRound} – Select team
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground mb-4">
+            Choose 2 batsmen (anyone from playing XI) and 1 bowler. Same bowler cannot bowl 2 consecutive Super Overs.
+          </p>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Striker (facing)</Label>
+              <Select value={soStrikerId || "_"} onValueChange={(v) => setSoStrikerId(v === "_" ? "" : v)}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Select batsman" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">Select</SelectItem>
+                  {defaultBattingOrder.filter((id) => id !== soNonStrikerId).map((id) => (
+                    <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Non-striker</Label>
+              <Select value={soNonStrikerId || "_"} onValueChange={(v) => setSoNonStrikerId(v === "_" ? "" : v)}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Select batsman" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">Select</SelectItem>
+                  {defaultBattingOrder.filter((id) => id !== soStrikerId).map((id) => (
+                    <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Bowler</Label>
+              {excludedBowlerId && (
+                <p className="text-xs text-amber-700 bg-amber-50 rounded-md px-2 py-1">
+                  {playersMap[excludedBowlerId] ?? "Same bowler"} cannot bowl (bowled in previous Super Over).
+                </p>
+              )}
+              <Select value={soBowlerId || "_"} onValueChange={(v) => setSoBowlerId(v === "_" ? "" : v)}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Select bowler" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">Select</SelectItem>
+                  {allowedBowlerIds.map((id) => (
+                    <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2 pt-4">
+            <Button
+              onClick={saveSuperOverSelection}
+              disabled={sending || !soStrikerId || !soNonStrikerId || soStrikerId === soNonStrikerId || !soBowlerId}
+              className="w-full h-11"
+            >
+              Start over
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Change bowler (after over or tap anytime) */}
       <Sheet open={showNextBowler && !shouldEnd.end} onOpenChange={(open) => !open && setShowNextBowler(false)}>
@@ -612,16 +747,22 @@ export default function ScorePage() {
           </DialogHeader>
           {showResultModal && (() => {
             const result = getMatchResult();
-            const canSuperOver = result.isTie && !result.isSuperOver && (match?.innings?.length ?? 0) >= 2;
+            const canGoToSuperOver = result.isTie && !result.isSuperOver && (match?.innings?.length ?? 0) >= 2;
+            const canAnotherSuperOver = result.isTie && result.isSuperOver;
             return (
               <>
                 <p className="text-lg font-semibold">{result.message}</p>
                 {result.isSuperOver && <p className="text-sm text-muted-foreground">(Super over)</p>}
                 <DialogFooter className="flex-col gap-2 sm:flex-col">
                   <Button onClick={confirmEndMatch} disabled={sending} className="w-full h-11">Done</Button>
-                  {canSuperOver && (
+                  {canGoToSuperOver && (
                     <Button onClick={() => { setShowResultModal(false); setShowSuperOverConfig(true); }} disabled={sending} className="w-full h-11 bg-amber-500 hover:bg-amber-600 text-white">
                       Go to Super Over
+                    </Button>
+                  )}
+                  {canAnotherSuperOver && (
+                    <Button onClick={() => { setShowResultModal(false); setShowSuperOverConfig(true); }} disabled={sending} className="w-full h-11 bg-amber-500 hover:bg-amber-600 text-white">
+                      Another Super Over
                     </Button>
                   )}
                   <Button variant="ghost" onClick={() => setShowResultModal(false)} className="w-full">Cancel</Button>

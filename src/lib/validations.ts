@@ -65,6 +65,8 @@ const inningsSchemaZ = z.object({
   maxOvers: z.number().min(1).optional(),
   ballsPerOver: z.number().min(4).max(8).optional(),
   maxWickets: z.number().min(1).optional(),
+  battingOrderOverride: z.array(z.string()).optional(),
+  initialBowlerId: z.string().optional(),
 });
 
 export const matchSchema = z.object({

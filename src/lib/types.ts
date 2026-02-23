@@ -85,6 +85,10 @@ export interface Innings {
   ballsPerOver?: number;
   /** Max wickets before innings ends (e.g. super over = 2). When reached, innings is over even if balls remain. */
   maxWickets?: number;
+  /** Super Over: chosen batting order (first two = openers). If set, used instead of team playing XI. */
+  battingOrderOverride?: string[];
+  /** Super Over: chosen bowler to start the over. If set, used as initial bowler. */
+  initialBowlerId?: string;
 }
 
 export type TossDecision = "BAT" | "FIELD";

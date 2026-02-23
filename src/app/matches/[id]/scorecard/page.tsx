@@ -68,7 +68,8 @@ export default function ScorecardPage() {
           const events: BallEvent[] = innings.events ?? [];
           const bpo = innings.ballsPerOver ?? rules.ballsPerOver;
           const summary = computeInningsSummary(events, rules, bpo);
-          const batOrder = match.teamAId === innings.battingTeamId ? (match.playingXI_A ?? []) : (match.playingXI_B ?? []);
+          const defaultBatOrder = match.teamAId === innings.battingTeamId ? (match.playingXI_A ?? []) : (match.playingXI_B ?? []);
+          const batOrder = (innings.battingOrderOverride?.length ? innings.battingOrderOverride : defaultBatOrder) as string[];
           const bowlOrder = match.teamAId === innings.bowlingTeamId ? (match.playingXI_A ?? []) : (match.playingXI_B ?? []);
           const battingCard = computeBattingCard(events, batOrder);
           const bowlingFigs = computeBowlingFigures(events, rules, bowlOrder, bpo);

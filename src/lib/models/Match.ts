@@ -46,6 +46,8 @@ const InningsSchema = new Schema<Innings>(
     maxOvers: Number,
     ballsPerOver: Number,
     maxWickets: Number,
+    battingOrderOverride: [String],
+    initialBowlerId: String,
   },
   { _id: false }
 );
