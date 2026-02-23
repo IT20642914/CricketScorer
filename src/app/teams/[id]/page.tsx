@@ -10,11 +10,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Player {
   _id: string;
   fullName: string;
+  shortName?: string;
 }
 interface Team {
   _id: string;
@@ -35,8 +42,10 @@ export default function EditTeamPage() {
   const router = useRouter();
   const [team, setTeam] = useState<Team | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [stats, setStats] = useState<{ matchCount: number; winCount: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [addPlayerId, setAddPlayerId] = useState("");
   const { register, handleSubmit, setValue, watch } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { teamName: "", playerIds: [] },
@@ -47,9 +56,11 @@ export default function EditTeamPage() {
     Promise.all([
       fetch(`/api/teams/${id}`).then((r) => (r.ok ? r.json() : null)),
       fetch("/api/players").then((r) => r.json()),
-    ]).then(([t, p]) => {
+      fetch(`/api/teams/${id}/stats`).then((r) => (r.ok ? r.json() : null)),
+    ]).then(([t, p, s]) => {
       if (t) setTeam(t);
       if (Array.isArray(p)) setPlayers(p);
+      if (s && typeof s.matchCount === "number") setStats(s);
       setLoading(false);
     });
   }, [id]);
@@ -61,10 +72,16 @@ export default function EditTeamPage() {
     }
   }, [team, setValue]);
 
-  function togglePlayer(pid: string) {
+  function addPlayer(pid: string) {
+    if (!pid || playerIds.includes(pid)) return;
+    setValue("playerIds", [...playerIds, pid]);
+    setAddPlayerId("");
+  }
+
+  function removePlayer(pid: string) {
     setValue(
       "playerIds",
-      playerIds.includes(pid) ? playerIds.filter((x) => x !== pid) : [...playerIds, pid]
+      playerIds.filter((x) => x !== pid)
     );
   }
 
@@ -90,6 +107,9 @@ export default function EditTeamPage() {
     );
   }
 
+  const playersInTeam = playerIds.map((pid) => players.find((p) => p._id === pid)).filter(Boolean) as Player[];
+  const availableToAdd = players.filter((p) => !playerIds.includes(p._id));
+
   return (
     <div className="min-h-screen bg-cricket-cream">
       <header className="page-header">
@@ -99,7 +119,7 @@ export default function EditTeamPage() {
         <h1 className="text-xl font-bold flex-1 text-center">Edit Team</h1>
         <div className="w-10" />
       </header>
-      <main className="p-4 max-w-lg mx-auto">
+      <main className="p-4 max-w-2xl mx-auto space-y-4">
         <Card>
           <CardContent className="p-5 pt-6">
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -107,22 +127,57 @@ export default function EditTeamPage() {
                 <Label htmlFor="teamName">Team name *</Label>
                 <Input id="teamName" {...register("teamName")} className="h-11" />
               </div>
+              {stats && (
+                <div className="flex gap-4 text-sm text-muted-foreground">
+                  <span><strong className="text-foreground">Matches:</strong> {stats.matchCount}</span>
+                  <span><strong className="text-foreground">Wins:</strong> {stats.winCount}</span>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Players</Label>
-                <ul className="space-y-1.5 max-h-56 overflow-y-auto rounded-md border border-input bg-muted/30 p-2">
-                  {players.map((p) => (
-                    <li key={p._id}>
-                      <label className="flex items-center gap-3 py-2.5 px-3 rounded-md hover:bg-background cursor-pointer">
-                        <Checkbox
-                          checked={playerIds.includes(p._id)}
-                          onCheckedChange={() => togglePlayer(p._id)}
-                        />
-                        <span className="text-sm font-medium">{p.fullName}</span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-xs text-muted-foreground">{playerIds.length} selected</p>
+                <div className="flex gap-2">
+                  <Select value={addPlayerId || "_"} onValueChange={(v) => v !== "_" && addPlayer(v)}>
+                    <SelectTrigger className="h-10 rounded-xl flex-1">
+                      <SelectValue placeholder="Add player" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_">Add player…</SelectItem>
+                      {availableToAdd.map((p) => (
+                        <SelectItem key={p._id} value={p._id}>{p.fullName}</SelectItem>
+                      ))}
+                      {availableToAdd.length === 0 && (
+                        <SelectItem value="_" disabled>All players added</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="overflow-x-auto rounded-md border border-input">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/50">
+                        <th className="text-left py-2.5 px-3 font-semibold text-foreground">Player</th>
+                        <th className="w-20 text-right py-2.5 px-3 font-semibold text-foreground">Remove</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {playersInTeam.map((p) => (
+                        <tr key={p._id} className="border-b border-border/80">
+                          <td className="py-2.5 px-3">{p.fullName}</td>
+                          <td className="py-2.5 px-3 text-right">
+                            <Button type="button" variant="ghost" size="sm" className="h-8 text-destructive" onClick={() => removePlayer(p._id)}>
+                              Remove
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                      {playersInTeam.length === 0 && (
+                        <tr>
+                          <td colSpan={2} className="py-4 px-3 text-center text-muted-foreground">No players yet. Add from dropdown above.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
               {error && (
                 <p className="text-sm text-destructive bg-destructive/10 py-2 px-3 rounded-md">{error}</p>

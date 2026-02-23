@@ -11,9 +11,16 @@ interface Team {
   playerIds: string[];
 }
 
+interface TeamStats {
+  matchCount: number;
+  winCount: number;
+}
+
 export default function TeamsPage() {
   const [teams, setTeams] = useState<Team[]>([]);
+  const [statsMap, setStatsMap] = useState<Record<string, TeamStats>>({});
   const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(false);
 
   useEffect(() => {
     fetch("/api/teams")
@@ -21,8 +28,29 @@ export default function TeamsPage() {
       .then((data) => {
         if (Array.isArray(data)) setTeams(data);
         setLoading(false);
+        return Array.isArray(data) ? (data as Team[]) : [];
       })
-      .catch(() => setLoading(false));
+      .then((list) => {
+        if (list.length === 0) return;
+        setStatsLoading(true);
+        Promise.all(
+          list.map((t) =>
+            fetch(`/api/teams/${t._id}/stats`)
+              .then((r) => r.json())
+              .then((s) => ({ id: t._id, stats: s }))
+              .catch(() => ({ id: t._id, stats: null }))
+          )
+        ).then((results) => {
+          const next: Record<string, TeamStats> = {};
+          results.forEach(({ id, stats }) => {
+            if (stats && typeof stats.matchCount === "number") {
+              next[id] = { matchCount: stats.matchCount, winCount: stats.winCount ?? 0 };
+            }
+          });
+          setStatsMap(next);
+          setStatsLoading(false);
+        });
+      });
   }, []);
 
   return (
@@ -36,7 +64,7 @@ export default function TeamsPage() {
           <Link href="/teams/new">Add</Link>
         </Button>
       </header>
-      <main className="p-4 max-w-lg mx-auto">
+      <main className="p-4 max-w-3xl mx-auto">
         {loading ? (
           <div className="flex justify-center py-12">
             <span className="text-muted-foreground">Loading...</span>
@@ -51,20 +79,37 @@ export default function TeamsPage() {
             </CardContent>
           </Card>
         ) : (
-          <ul className="space-y-2">
-            {teams.map((t) => (
-              <Card key={t._id} className="border-0 shadow-card">
-                <Link href={`/teams/${t._id}`}>
-                  <CardContent className="flex justify-between items-center py-3.5 px-4">
-                    <span className="font-medium text-foreground truncate pr-2">{t.teamName}</span>
-                    <span className="text-muted-foreground text-sm shrink-0">
-                      {(t.playerIds?.length ?? 0)} players
-                    </span>
-                  </CardContent>
-                </Link>
-              </Card>
-            ))}
-          </ul>
+          <Card className="border-0 shadow-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="text-left py-3 px-4 font-semibold text-foreground">Team</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">Players</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">Matches</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">Wins</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {teams.map((t) => {
+                    const stats = statsMap[t._id];
+                    return (
+                      <tr key={t._id} className="border-b border-border/80 hover:bg-muted/30 transition-colors">
+                        <td className="py-3 px-4">
+                          <Link href={`/teams/${t._id}`} className="font-medium text-foreground hover:underline">
+                            {t.teamName}
+                          </Link>
+                        </td>
+                        <td className="py-3 px-4 text-right tabular-nums">{t.playerIds?.length ?? 0}</td>
+                        <td className="py-3 px-4 text-right tabular-nums">{statsLoading && !stats ? "…" : (stats ? stats.matchCount : "—")}</td>
+                        <td className="py-3 px-4 text-right tabular-nums">{statsLoading && !stats ? "…" : (stats ? stats.winCount : "—")}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         )}
       </main>
     </div>
