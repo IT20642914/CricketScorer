@@ -42,7 +42,7 @@ export async function GET(
 
     let winCount = 0;
     for (const m of matches) {
-      const winnerId = getWinnerTeamId(m);
+      const winnerId = getWinnerTeamId(m as Parameters<typeof getWinnerTeamId>[0]);
       if (winnerId === teamId) winCount += 1;
     }
 

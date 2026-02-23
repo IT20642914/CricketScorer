@@ -43,7 +43,7 @@ export default function NewTeamPage() {
   const playerIds = watch("playerIds") ?? [];
 
   useEffect(() => {
-    fetch("/api/players").then((r) => r.json()).then((d) => Array.isArray(d) && setPlayers(d));
+    fetch("/api/players?light=1").then((r) => r.json()).then((d) => Array.isArray(d) && setPlayers(d));
   }, []);
 
   function addPlayer(pid: string) {

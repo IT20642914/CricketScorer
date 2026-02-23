@@ -20,32 +20,30 @@ interface Player {
   shortName?: string;
   email?: string;
   isKeeper?: boolean;
-}
-
-interface PlayerStats {
-  matchesPlayed: number;
-  runs: number;
-  strikeRate: number | null;
-  wickets: number;
+  stats?: {
+    matchesPlayed: number;
+    runs: number;
+    strikeRate: number | null;
+    wickets: number;
+  };
 }
 
 export default function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
-  const [statsMap, setStatsMap] = useState<Record<string, PlayerStats>>({});
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [statsLoading, setStatsLoading] = useState(false);
   const [removeId, setRemoveId] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
 
   const loadPlayers = useCallback(() => {
-    const q = search ? `?search=${encodeURIComponent(search)}` : "";
-    return fetch(`/api/players${q}`)
+    const params = new URLSearchParams();
+    params.set("withStats", "1");
+    if (search.trim()) params.set("search", search.trim());
+    return fetch(`/api/players?${params}`)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) setPlayers(data);
         setLoading(false);
-        return Array.isArray(data) ? (data as Player[]) : [];
       })
       .catch(() => setLoading(false));
   }, [search]);
@@ -55,47 +53,12 @@ export default function PlayersPage() {
     loadPlayers();
   }, [loadPlayers]);
 
-  useEffect(() => {
-    if (players.length === 0) {
-      setStatsMap({});
-      return;
-    }
-    setStatsLoading(true);
-    Promise.all(
-      players.map((p) =>
-        fetch(`/api/players/${p._id}/stats`)
-          .then((r) => r.json())
-          .then((s) => ({ id: p._id, stats: s }))
-          .catch(() => ({ id: p._id, stats: null }))
-      )
-    ).then((results) => {
-      const next: Record<string, PlayerStats> = {};
-      results.forEach(({ id, stats }) => {
-        if (stats && typeof stats.matchesPlayed === "number") {
-          next[id] = {
-            matchesPlayed: stats.matchesPlayed,
-            runs: stats.batting?.runs ?? 0,
-            strikeRate: stats.batting?.strikeRate ?? null,
-            wickets: stats.bowling?.wickets ?? 0,
-          };
-        }
-      });
-      setStatsMap(next);
-      setStatsLoading(false);
-    });
-  }, [players]);
-
   async function removePlayer(id: string) {
     setRemoving(true);
     try {
       const res = await fetch(`/api/players/${id}`, { method: "DELETE" });
       if (res.ok) {
         setPlayers((prev) => prev.filter((p) => p._id !== id));
-        setStatsMap((prev) => {
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
         setRemoveId(null);
       }
     } finally {
@@ -156,7 +119,7 @@ export default function PlayersPage() {
                 </thead>
                 <tbody>
                   {players.map((p) => {
-                    const stats = statsMap[p._id];
+                    const stats = p.stats;
                     return (
                       <tr key={p._id} className="border-b border-border/80 hover:bg-muted/30 transition-colors">
                         <td className="py-3 px-4">
@@ -165,10 +128,10 @@ export default function PlayersPage() {
                           </Link>
                         </td>
                         <td className="py-3 px-4 text-muted-foreground">{p.shortName ?? "—"}</td>
-                        <td className="py-3 px-4 text-right tabular-nums">{statsLoading && !stats ? "…" : (stats ? stats.matchesPlayed : "—")}</td>
-                        <td className="py-3 px-4 text-right tabular-nums">{statsLoading && !stats ? "…" : (stats ? stats.runs : "—")}</td>
-                        <td className="py-3 px-4 text-right tabular-nums">{statsLoading && !stats ? "…" : (stats?.strikeRate != null ? stats.strikeRate : "—")}</td>
-                        <td className="py-3 px-4 text-right tabular-nums">{statsLoading && !stats ? "…" : (stats ? stats.wickets : "—")}</td>
+                        <td className="py-3 px-4 text-right tabular-nums">{stats ? stats.matchesPlayed : "—"}</td>
+                        <td className="py-3 px-4 text-right tabular-nums">{stats ? stats.runs : "—"}</td>
+                        <td className="py-3 px-4 text-right tabular-nums">{stats?.strikeRate != null ? stats.strikeRate : "—"}</td>
+                        <td className="py-3 px-4 text-right tabular-nums">{stats ? stats.wickets : "—"}</td>
                         <td className="py-3 px-4 text-muted-foreground hidden sm:table-cell truncate max-w-[180px]">{p.email ?? "—"}</td>
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1">

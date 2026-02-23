@@ -62,7 +62,7 @@ export default function NewMatchPage() {
 
   useEffect(() => {
     fetch("/api/teams").then((r) => r.json()).then((d) => Array.isArray(d) && setTeams(d));
-    fetch("/api/players").then((r) => r.json()).then((d) => {
+    fetch("/api/players?light=1").then((r) => r.json()).then((d) => {
       if (Array.isArray(d)) {
         const map: Record<string, string> = {};
         (d as Player[]).forEach((p) => { map[p._id] = p.fullName; });

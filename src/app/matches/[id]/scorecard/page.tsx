@@ -31,7 +31,7 @@ export default function ScorecardPage() {
     if (!id) return;
     Promise.all([
       fetch(`/api/matches/${id}`).then((r) => r.json()),
-      fetch("/api/players").then((r) => r.json()),
+      fetch("/api/players?light=1").then((r) => r.json()),
       fetch("/api/teams").then((r) => r.json()),
     ]).then(([m, players, teams]: [Match, Player[], Team[]]) => {
       if (m._id) setMatch(m);

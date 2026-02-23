@@ -55,7 +55,7 @@ export default function EditTeamPage() {
   useEffect(() => {
     Promise.all([
       fetch(`/api/teams/${id}`).then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/players").then((r) => r.json()),
+      fetch("/api/players?light=1").then((r) => r.json()),
       fetch(`/api/teams/${id}/stats`).then((r) => (r.ok ? r.json() : null)),
     ]).then(([t, p, s]) => {
       if (t) setTeam(t);

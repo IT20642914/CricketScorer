@@ -1,16 +1,24 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-cricket-cream">
-      <header className="page-header">
-        <div className="flex-1" />
-        <h1 className="text-xl font-bold tracking-tight">Cricket Scoring</h1>
-        <div className="flex-1" />
+      <header className="page-header flex items-center justify-center gap-3">
+        <Link href="/" className="flex items-center gap-3 shrink-0">
+          <Image
+            src="/logo.jpeg"
+            alt="Cricket Scoring"
+            width={36}
+            height={36}
+            className="rounded-full object-cover bg-white/10"
+          />
+          <h1 className="text-xl font-bold tracking-tight">Cricket Scoring</h1>
+        </Link>
       </header>
       <main className="p-4 max-w-lg mx-auto">
         <div className="space-y-3">

@@ -177,7 +177,7 @@ export default function PlayerStatsPage() {
                     <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
                     <Tooltip
-                      formatter={(value: number) => [value, "Runs"]}
+                      formatter={(value: number | undefined) => [value ?? 0, "Runs"]}
                       labelFormatter={(label) => label}
                     />
                     <Bar dataKey="runs" radius={[4, 4, 0, 0]}>

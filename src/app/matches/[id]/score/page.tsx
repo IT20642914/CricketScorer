@@ -76,7 +76,7 @@ export default function ScorePage() {
   const loadMatch = useCallback(async (id: string) => {
     const [mRes, pRes, tRes] = await Promise.all([
       fetch(`/api/matches/${id}`),
-      fetch("/api/players"),
+      fetch("/api/players?light=1"),
       fetch("/api/teams"),
     ]);
     const m = await mRes.json();
