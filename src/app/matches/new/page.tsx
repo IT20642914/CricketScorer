@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { Team } from "@/lib/types";
@@ -40,7 +40,7 @@ interface Player {
   fullName: string;
 }
 
-export default function NewMatchPage() {
+function NewMatchContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rematchId = searchParams.get("rematch");
@@ -501,5 +501,17 @@ export default function NewMatchPage() {
         </Card>
       </main>
     </div>
+  );
+}
+
+export default function NewMatchPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
+        <span className="text-muted-foreground">Loading...</span>
+      </div>
+    }>
+      <NewMatchContent />
+    </Suspense>
   );
 }
