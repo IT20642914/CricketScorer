@@ -10,13 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 interface Player {
   _id: string;
@@ -45,7 +38,8 @@ export default function EditTeamPage() {
   const [stats, setStats] = useState<{ matchCount: number; winCount: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [addPlayerId, setAddPlayerId] = useState("");
+  const [playerSearch, setPlayerSearch] = useState("");
+  const [playerDropdownOpen, setPlayerDropdownOpen] = useState(false);
   const { register, handleSubmit, setValue, watch } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { teamName: "", playerIds: [] },
@@ -75,7 +69,8 @@ export default function EditTeamPage() {
   function addPlayer(pid: string) {
     if (!pid || playerIds.includes(pid)) return;
     setValue("playerIds", [...playerIds, pid]);
-    setAddPlayerId("");
+    setPlayerSearch("");
+    setPlayerDropdownOpen(false);
   }
 
   function removePlayer(pid: string) {
@@ -109,6 +104,15 @@ export default function EditTeamPage() {
 
   const playersInTeam = playerIds.map((pid) => players.find((p) => p._id === pid)).filter(Boolean) as Player[];
   const availableToAdd = players.filter((p) => !playerIds.includes(p._id));
+  const searchLower = playerSearch.trim().toLowerCase();
+  const filteredPlayers =
+    searchLower === ""
+      ? availableToAdd
+      : availableToAdd.filter(
+          (p) =>
+            p.fullName.toLowerCase().includes(searchLower) ||
+            (p.shortName?.toLowerCase().includes(searchLower) ?? false)
+        );
 
   return (
     <div className="min-h-screen bg-cricket-cream">
@@ -135,21 +139,42 @@ export default function EditTeamPage() {
               )}
               <div className="space-y-2">
                 <Label>Players</Label>
-                <div className="flex gap-2">
-                  <Select value={addPlayerId || "_"} onValueChange={(v) => v !== "_" && addPlayer(v)}>
-                    <SelectTrigger className="h-10 rounded-xl flex-1">
-                      <SelectValue placeholder="Add player" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_">Add player…</SelectItem>
-                      {availableToAdd.map((p) => (
-                        <SelectItem key={p._id} value={p._id}>{p.fullName}</SelectItem>
-                      ))}
-                      {availableToAdd.length === 0 && (
-                        <SelectItem value="_" disabled>All players added</SelectItem>
+                <div className="relative">
+                  <Input
+                    placeholder="Type to search and select player..."
+                    value={playerSearch}
+                    onChange={(e) => {
+                      setPlayerSearch(e.target.value);
+                      setPlayerDropdownOpen(true);
+                    }}
+                    onFocus={() => setPlayerDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setPlayerDropdownOpen(false), 150)}
+                    className="h-11 pr-9"
+                  />
+                  {playerDropdownOpen && (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md max-h-48 overflow-auto">
+                      {filteredPlayers.length === 0 ? (
+                        <div className="py-3 px-3 text-sm text-muted-foreground">
+                          {availableToAdd.length === 0 ? "All players added" : "No matches"}
+                        </div>
+                      ) : (
+                        filteredPlayers.map((p) => (
+                          <button
+                            key={p._id}
+                            type="button"
+                            className="w-full cursor-pointer text-left px-3 py-2.5 text-sm hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground outline-none rounded-sm"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              addPlayer(p._id);
+                            }}
+                          >
+                            {p.fullName}
+                            {p.shortName ? ` (${p.shortName})` : ""}
+                          </button>
+                        ))
                       )}
-                    </SelectContent>
-                  </Select>
+                    </div>
+                  )}
                 </div>
                 <div className="overflow-x-auto rounded-md border border-input">
                   <table className="w-full text-sm">
@@ -172,7 +197,7 @@ export default function EditTeamPage() {
                       ))}
                       {playersInTeam.length === 0 && (
                         <tr>
-                          <td colSpan={2} className="py-4 px-3 text-center text-muted-foreground">No players yet. Add from dropdown above.</td>
+                          <td colSpan={2} className="py-4 px-3 text-center text-muted-foreground">No players yet. Type above to add.</td>
                         </tr>
                       )}
                     </tbody>

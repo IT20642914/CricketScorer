@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { Team } from "@/lib/types";
 import { DEFAULT_RULES } from "@/lib/types";
+import { computeInningsSummary } from "@/lib/engine";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -41,10 +42,13 @@ interface Player {
 
 export default function NewMatchPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rematchId = searchParams.get("rematch");
   const [teams, setTeams] = useState<Team[]>([]);
   const [playersMap, setPlayersMap] = useState<Record<string, string>>({});
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
+  const [rematchLoaded, setRematchLoaded] = useState(false);
   const [error, setError] = useState("");
   const [state, setState] = useState<WizardState>({
     teamAId: "",
@@ -70,6 +74,49 @@ export default function NewMatchPage() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (!rematchId || rematchLoaded || teams.length === 0) return;
+    fetch(`/api/matches/${rematchId}`)
+      .then((r) => r.json())
+      .then((m) => {
+        if (!m._id) return;
+        const rules = m.rulesConfig ? { ...DEFAULT_RULES, ...m.rulesConfig } : { ...DEFAULT_RULES };
+        const inn0 = m.innings?.[0];
+        const inn1 = m.innings?.[1];
+        let tossWinnerTeamId = "";
+        let tossDecision: "BAT" | "FIELD" | "" = "";
+        if (inn0 && inn1) {
+          const bpo0 = inn0.ballsPerOver ?? rules.ballsPerOver;
+          const bpo1 = inn1.ballsPerOver ?? rules.ballsPerOver;
+          const sum0 = computeInningsSummary(inn0.events ?? [], rules, bpo0);
+          const sum1 = computeInningsSummary(inn1.events ?? [], rules, bpo1);
+          if (sum1.totalRuns > sum0.totalRuns) {
+            tossWinnerTeamId = inn1.battingTeamId;
+            tossDecision = "BAT";
+          } else if (sum0.totalRuns > sum1.totalRuns) {
+            tossWinnerTeamId = inn0.battingTeamId;
+            tossDecision = "BAT";
+          }
+        }
+        setState({
+          teamAId: m.teamAId ?? "",
+          teamBId: m.teamBId ?? "",
+          teamA: teams.find((x) => x._id === m.teamAId) ?? null,
+          teamB: teams.find((x) => x._id === m.teamBId) ?? null,
+          playingXI_A: Array.isArray(m.playingXI_A) ? m.playingXI_A : [],
+          playingXI_B: Array.isArray(m.playingXI_B) ? m.playingXI_B : [],
+          rules,
+          tossWinnerTeamId,
+          tossDecision,
+          matchName: (m.matchName ?? "Match") + " (rematch)",
+          date: new Date().toISOString().slice(0, 10),
+        });
+        setStep(4);
+        setRematchLoaded(true);
+      })
+      .catch(() => setRematchLoaded(true));
+  }, [rematchId, rematchLoaded, teams]);
 
   useEffect(() => {
     const t = teams.find((x) => x._id === state.teamAId);

@@ -29,6 +29,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -45,6 +46,7 @@ interface Player {
 interface Team {
   _id: string;
   teamName: string;
+  playerIds?: string[];
 }
 
 export default function ScorePage() {
@@ -53,6 +55,11 @@ export default function ScorePage() {
   const [match, setMatch] = useState<Match | null>(null);
   const [playersMap, setPlayersMap] = useState<Record<string, string>>({});
   const [teamsMap, setTeamsMap] = useState<Record<string, string>>({});
+  const [teamsList, setTeamsList] = useState<Team[]>([]);
+  const [showEditSheet, setShowEditSheet] = useState(false);
+  const [editOversPerInnings, setEditOversPerInnings] = useState(20);
+  const [editBallsPerOver, setEditBallsPerOver] = useState(6);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [currentBowlerId, setCurrentBowlerId] = useState<string>("");
   const [showWicket, setShowWicket] = useState(false);
   const [showNextBowler, setShowNextBowler] = useState(false);
@@ -98,6 +105,7 @@ export default function ScorePage() {
       const map: Record<string, string> = {};
       teams.forEach((t) => { map[t._id] = t.teamName; });
       setTeamsMap(map);
+      setTeamsList(teams);
     }
     setLoading(false);
   }, []);
@@ -129,6 +137,8 @@ export default function ScorePage() {
 
   const totalBallsBowled = summary?.totalBallsBowled ?? 0;
   const overJustFinished = totalBallsBowled > 0 && totalBallsBowled % effectiveBallsPerOver === 0;
+  /** After at least one over is complete, do not allow changing balls per over (only total overs per innings). */
+  const oneOverComplete = totalBallsBowled >= effectiveBallsPerOver;
   /** Can only change bowler when 0 balls bowled in current over (start or after over complete). */
   const canChangeBowler = totalBallsBowled % effectiveBallsPerOver === 0;
 
@@ -394,6 +404,47 @@ export default function ScorePage() {
     setSending(false);
   }
 
+  async function saveEditRules() {
+    if (!matchId || !match || savingEdit) return;
+    setSavingEdit(true);
+    const nextRules = {
+      ...match.rulesConfig,
+      oversPerInnings: Math.max(1, editOversPerInnings),
+      ...(oneOverComplete ? {} : { ballsPerOver: editBallsPerOver }),
+    };
+    try {
+      const res = await fetch(`/api/matches/${matchId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rulesConfig: nextRules }),
+      });
+      const data = await res.json();
+      if (data._id) setMatch(data);
+      setShowEditSheet(false);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function addPlayerToXI(team: "A" | "B", playerId: string) {
+    if (!matchId || !match || savingEdit) return;
+    const current = team === "A" ? (match.playingXI_A ?? []) : (match.playingXI_B ?? []);
+    if (current.length >= 11 || current.includes(playerId)) return;
+    const next = [...current, playerId];
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/matches/${matchId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(team === "A" ? { playingXI_A: next } : { playingXI_B: next }),
+      });
+      const data = await res.json();
+      if (data._id) setMatch(data);
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   if (loading || !match) {
     return (
       <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
@@ -420,9 +471,23 @@ export default function ScorePage() {
           <Link href="/matches">← Back</Link>
         </Button>
         <h1 className="text-lg font-bold truncate flex-1 text-center mx-2">{match.matchName}</h1>
-        <Button variant="ghost" size="sm" className="text-white/95 hover:bg-white/10" asChild>
-          <Link href={`/matches/${matchId}/scorecard`}>Scorecard</Link>
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-white/95 hover:bg-white/10"
+            onClick={() => {
+              setEditOversPerInnings(rules.oversPerInnings);
+              setEditBallsPerOver(rules.ballsPerOver);
+              setShowEditSheet(true);
+            }}
+          >
+            Edit
+          </Button>
+          <Button variant="ghost" size="sm" className="text-white/95 hover:bg-white/10" asChild>
+            <Link href={`/matches/${matchId}/scorecard`}>Scorecard</Link>
+          </Button>
+        </div>
       </header>
 
       <main className="p-4 max-w-lg mx-auto">
@@ -1045,6 +1110,110 @@ export default function ScorePage() {
                 </div>
               </>
             )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Edit match: rules + add player to playing XI */}
+      <Sheet open={showEditSheet} onOpenChange={setShowEditSheet}>
+        <SheetContent className="overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="text-primary">Edit match</SheetTitle>
+          </SheetHeader>
+          <div className="p-4 space-y-6">
+            <div className="space-y-2">
+              <Label>Total overs per innings</Label>
+              <Input
+                type="number"
+                min={1}
+                value={editOversPerInnings}
+                onChange={(e) => setEditOversPerInnings(Math.max(1, +e.target.value || 1))}
+                className="h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Balls per over {oneOverComplete && "(locked after first over)"}</Label>
+              <Input
+                type="number"
+                min={4}
+                max={8}
+                value={editBallsPerOver}
+                onChange={(e) => setEditBallsPerOver(Math.min(8, Math.max(4, +e.target.value || 6)))}
+                className="h-11"
+                disabled={oneOverComplete}
+              />
+            </div>
+            <div className="pt-2 border-t space-y-3">
+              <Label>Playing XI</Label>
+              {match && (() => {
+                const teamA = teamsList.find((t) => t._id === match.teamAId);
+                const teamB = teamsList.find((t) => t._id === match.teamBId);
+                const xiA = match.playingXI_A ?? [];
+                const xiB = match.playingXI_B ?? [];
+                const availableA = (teamA?.playerIds ?? []).filter((id) => !xiA.includes(id));
+                const availableB = (teamB?.playerIds ?? []).filter((id) => !xiB.includes(id));
+                return (
+                  <>
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-medium text-muted-foreground">{teamsMap[match.teamAId] ?? "Team A"}</p>
+                      <ul className="text-sm list-disc list-inside">
+                        {xiA.map((id) => (
+                          <li key={id}>{playersMap[id] ?? id}</li>
+                        ))}
+                      </ul>
+                      {xiA.length < 11 && availableA.length > 0 && (
+                        <Select
+                          key={`add-a-${xiA.length}`}
+                          onValueChange={(v) => v && addPlayerToXI("A", v)}
+                          disabled={savingEdit}
+                        >
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Add player…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableA.map((id) => (
+                              <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-sm font-medium text-muted-foreground">{teamsMap[match.teamBId] ?? "Team B"}</p>
+                      <ul className="text-sm list-disc list-inside">
+                        {xiB.map((id) => (
+                          <li key={id}>{playersMap[id] ?? id}</li>
+                        ))}
+                      </ul>
+                      {xiB.length < 11 && availableB.length > 0 && (
+                        <Select
+                          key={`add-b-${xiB.length}`}
+                          onValueChange={(v) => v && addPlayerToXI("B", v)}
+                          disabled={savingEdit}
+                        >
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Add player…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableB.map((id) => (
+                              <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowEditSheet(false)} className="flex-1" disabled={savingEdit}>
+                Cancel
+              </Button>
+              <Button onClick={saveEditRules} disabled={savingEdit} className="flex-1 bg-cricket-green text-white hover:bg-cricket-green/90">
+                {savingEdit ? "Saving…" : "Save rules"}
+              </Button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>
