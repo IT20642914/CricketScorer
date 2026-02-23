@@ -64,7 +64,7 @@ export default function ScorecardPage() {
 
   /** Compute match result (who won or tie) for completed matches. */
   function getMatchResult(): string | null {
-    if (match.status !== "COMPLETED") return null;
+    if (!match || match.status !== "COMPLETED") return null;
     const inns = match.innings ?? [];
     if (inns.length < 2) return null;
     const isSO = inns.length >= 4 && (inns[inns.length - 1]?.maxOvers === 1);
