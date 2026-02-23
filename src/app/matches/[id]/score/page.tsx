@@ -171,22 +171,30 @@ export default function ScorePage() {
     setSending(true);
     const restBatting = defaultBattingOrder.filter((id) => id !== soStrikerId && id !== soNonStrikerId);
     const battingOrderOverride = [soStrikerId, soNonStrikerId, ...restBatting];
+    const initialBowlerId = soBowlerId;
     const updatedInnings = [...(match.innings ?? [])];
     const lastIdx = updatedInnings.length - 1;
     if (lastIdx >= 0) {
-      updatedInnings[lastIdx] = { ...updatedInnings[lastIdx]!, battingOrderOverride, initialBowlerId: soBowlerId };
+      updatedInnings[lastIdx] = { ...updatedInnings[lastIdx]!, battingOrderOverride, initialBowlerId };
     }
-    const res = await fetch(`/api/matches/${matchId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ innings: updatedInnings }),
-    });
-    const data = await res.json();
-    if (data._id) {
-      setMatch(data);
-      setCurrentBowlerId(soBowlerId);
+    try {
+      const res = await fetch(`/api/matches/${matchId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ innings: updatedInnings }),
+      });
+      const data = await res.json();
+      if (data._id) {
+        const innings = Array.isArray(data.innings) ? [...data.innings] : [...(match.innings ?? [])];
+        if (lastIdx >= 0 && innings[lastIdx]) {
+          innings[lastIdx] = { ...innings[lastIdx], battingOrderOverride, initialBowlerId };
+        }
+        setMatch({ ...data, innings });
+        setCurrentBowlerId(initialBowlerId);
+      }
+    } finally {
+      setSending(false);
     }
-    setSending(false);
   }
 
   async function addBall(payload: { runsOffBat: number; extras?: { type: "WD" | "NB" | "B" | "LB" | null; runs: number }; wicket?: { kind: string; batterOutId: string; fielderId?: string } }) {
@@ -628,9 +636,12 @@ export default function ScorePage() {
               Super Over {superOverRound} – Select team
             </DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground mb-4">
-            Choose 2 batsmen (anyone from playing XI) and 1 bowler. Same bowler cannot bowl 2 consecutive Super Overs.
-          </p>
+          <div className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground space-y-1 mb-4">
+            <p className="font-medium text-foreground">Rules</p>
+            <p>• 1 over (6 balls) per team. If 2 wickets fall, innings ends immediately.</p>
+            <p>• Select 2 batters (anyone from playing XI) and 1 bowler. Same bowler cannot bowl 2 consecutive Super Overs.</p>
+            <p>• More runs wins. If tied, another Super Over is played until there is a winner.</p>
+          </div>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Striker (facing)</Label>
