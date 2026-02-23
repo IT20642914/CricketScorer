@@ -175,6 +175,8 @@ export default function ScorePage() {
   const superOverRound = inningsIndex >= 2 ? Math.floor((inningsIndex - 2) / 2) + 1 : 1;
   const battingTeamName = teamsMap[battingTeamId] ?? (match?.teamAId === battingTeamId ? "Team A" : "Team B");
   const bowlingTeamName = teamsMap[bowlingTeamId] ?? (match?.teamAId === bowlingTeamId ? "Team A" : "Team B");
+  const teamAName = teamsMap[match?.teamAId ?? ""] ?? "Team A";
+  const teamBName = teamsMap[match?.teamBId ?? ""] ?? "Team B";
 
   /** Chase complete: second team passed target — show result, no more scoring. */
   const chaseComplete = isChasingInnings && runsNeeded <= 0 && firstInningsRuns > 0 && !isSuperOver;
@@ -335,8 +337,8 @@ export default function ScorePage() {
     const w2 = computeInningsSummary(second.events ?? [], rules, bpo2).wickets;
     const team1Bat = first.battingTeamId;
     const team2Bat = second.battingTeamId;
-    const team1Name = match?.teamAId === team1Bat ? "Team A" : "Team B";
-    const team2Name = match?.teamAId === team2Bat ? "Team A" : "Team B";
+    const team1Name = match?.teamAId === team1Bat ? teamAName : teamBName;
+    const team2Name = match?.teamAId === team2Bat ? teamAName : teamBName;
     const maxWk = (match?.playingXI_A?.length ?? 11) - 1;
     if (r2 > r1) return { message: `${team2Name} won by ${maxWk - w2} wicket${maxWk - w2 !== 1 ? "s" : ""}`, isTie: false, isSuperOver: isSO };
     if (r2 < r1) return { message: `${team1Name} won by ${r1 - r2} run${r1 - r2 !== 1 ? "s" : ""}`, isTie: false, isSuperOver: isSO };
