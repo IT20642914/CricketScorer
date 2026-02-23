@@ -1,0 +1,102 @@
+// Domain types for cricket scoring app
+
+export type BattingStyle = "RIGHT" | "LEFT";
+export type BowlingStyle = "RIGHT_ARM_FAST" | "RIGHT_ARM_MEDIUM" | "RIGHT_ARM_OFF" | "RIGHT_ARM_LEG" | "LEFT_ARM_FAST" | "LEFT_ARM_ORTHODOX" | "LEFT_ARM_CHINAMAN" | "OTHER";
+
+export interface Player {
+  _id: string;
+  fullName: string;
+  shortName?: string;
+  battingStyle?: BattingStyle;
+  bowlingStyle?: BowlingStyle;
+  isKeeper?: boolean;
+}
+
+export interface Team {
+  _id: string;
+  teamName: string;
+  playerIds: string[];
+  defaultPlayingXIIds?: string[];
+}
+
+export interface RulesConfig {
+  oversPerInnings: number;
+  ballsPerOver: number;
+  maxOversPerBowler?: number;
+  wideRuns: number;
+  noBallRuns: number;
+  wideCountsAsBall: boolean;
+  noBallCountsAsBall: boolean;
+  lastManStandingRule?: boolean;
+}
+
+export const DEFAULT_RULES: RulesConfig = {
+  oversPerInnings: 20,
+  ballsPerOver: 6,
+  wideRuns: 1,
+  noBallRuns: 1,
+  wideCountsAsBall: true,
+  noBallCountsAsBall: true,
+};
+
+export type ExtrasType = "WD" | "NB" | "B" | "LB" | null;
+
+export interface Extras {
+  type: ExtrasType;
+  runs: number;
+}
+
+export type WicketKind =
+  | "BOWLED"
+  | "CAUGHT"
+  | "LBW"
+  | "RUN_OUT"
+  | "STUMPED"
+  | "HIT_WICKET"
+  | "RETIRED";
+
+export interface WicketInfo {
+  kind: WicketKind;
+  batterOutId: string;
+  fielderId?: string;
+}
+
+export interface BallEvent {
+  _id: string;
+  createdAt: string;
+  strikerId: string;
+  nonStrikerId: string;
+  bowlerId: string;
+  overNumber: number;
+  ballInOver: number;
+  runsOffBat: number;
+  extras: Extras;
+  wicket?: WicketInfo;
+  notes?: string;
+}
+
+export interface Innings {
+  battingTeamId: string;
+  bowlingTeamId: string;
+  events: BallEvent[];
+}
+
+export type TossDecision = "BAT" | "FIELD";
+export type MatchStatus = "SETUP" | "IN_PROGRESS" | "COMPLETED";
+
+export interface Match {
+  _id: string;
+  matchName: string;
+  location?: string;
+  date: string;
+  teamAId: string;
+  teamBId: string;
+  playingXI_A: string[];
+  playingXI_B: string[];
+  tossWinnerTeamId: string;
+  tossDecision: TossDecision;
+  rulesConfig: RulesConfig;
+  status: MatchStatus;
+  innings: Innings[];
+  createdByUserId?: string;
+}

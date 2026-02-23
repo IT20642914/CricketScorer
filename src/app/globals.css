@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cricket-green: #1a472a;
+  --cricket-gold: #c9a227;
+  --cricket-cream: #f5f0e6;
+}
+
+body {
+  @apply bg-cricket-cream text-gray-900 antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Touch-friendly tap targets */
+button, a, [role="button"] {
+  @apply min-h-touch min-w-[44px];
+}
+
+.safe-area-pb {
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+}
