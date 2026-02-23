@@ -79,6 +79,12 @@ export interface Innings {
   battingTeamId: string;
   bowlingTeamId: string;
   events: BallEvent[];
+  /** Override for super over etc. If set, this innings is limited to this many overs. */
+  maxOvers?: number;
+  /** Override balls per over for this innings (e.g. super over with 5 or 6 balls). */
+  ballsPerOver?: number;
+  /** Max wickets before innings ends (e.g. super over = 2). When reached, innings is over even if balls remain. */
+  maxWickets?: number;
 }
 
 export type TossDecision = "BAT" | "FIELD";

@@ -66,16 +66,17 @@ export default function ScorecardPage() {
 
         {(match.innings ?? []).map((innings, idx) => {
           const events: BallEvent[] = innings.events ?? [];
-          const summary = computeInningsSummary(events, rules);
+          const bpo = innings.ballsPerOver ?? rules.ballsPerOver;
+          const summary = computeInningsSummary(events, rules, bpo);
           const batOrder = match.teamAId === innings.battingTeamId ? (match.playingXI_A ?? []) : (match.playingXI_B ?? []);
           const bowlOrder = match.teamAId === innings.bowlingTeamId ? (match.playingXI_A ?? []) : (match.playingXI_B ?? []);
           const battingCard = computeBattingCard(events, batOrder);
-          const bowlingFigs = computeBowlingFigures(events, rules, bowlOrder);
+          const bowlingFigs = computeBowlingFigures(events, rules, bowlOrder, bpo);
 
           return (
             <div key={idx} className="bg-white rounded-xl shadow p-4">
               <h2 className="font-bold text-cricket-green mb-2">
-                Innings {idx + 1}: {summary.totalRuns}/{summary.wickets} ({formatOvers(summary, rules.ballsPerOver)} overs)
+                Innings {idx + 1}{innings.maxOvers === 1 ? " (Super Over)" : ""}: {summary.totalRuns}/{summary.wickets} ({formatOvers(summary, bpo)} overs)
               </h2>
               <p className="text-sm text-gray-600 mb-3">Run rate: {summary.runRate}</p>
               {Object.keys(summary.extrasBreakdown).length > 0 && (

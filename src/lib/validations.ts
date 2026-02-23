@@ -62,6 +62,9 @@ const inningsSchemaZ = z.object({
   battingTeamId: z.string(),
   bowlingTeamId: z.string(),
   events: z.array(z.any()).default([]),
+  maxOvers: z.number().min(1).optional(),
+  ballsPerOver: z.number().min(4).max(8).optional(),
+  maxWickets: z.number().min(1).optional(),
 });
 
 export const matchSchema = z.object({

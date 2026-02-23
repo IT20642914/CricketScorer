@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Match {
   _id: string;
@@ -48,42 +51,67 @@ export default function MatchesPage() {
 
   return (
     <div className="min-h-screen bg-cricket-cream">
-      <header className="bg-cricket-green text-white px-4 py-4 flex items-center gap-2">
-        <Link href="/" className="text-white">←</Link>
-        <h1 className="text-xl font-bold flex-1">Match History</h1>
-        <Link href="/matches/new" className="bg-white text-cricket-green px-3 py-1.5 rounded font-medium text-sm">New</Link>
+      <header className="page-header">
+        <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 -ml-2" asChild>
+          <Link href="/">←</Link>
+        </Button>
+        <h1 className="text-xl font-bold flex-1 text-center">Match History</h1>
+        <Button size="sm" className="bg-white text-primary hover:bg-white/90" asChild>
+          <Link href="/matches/new">New</Link>
+        </Button>
       </header>
       <main className="p-4 max-w-lg mx-auto">
-        <div className="flex gap-2 mb-4">
-          {(["all", "IN_PROGRESS", "COMPLETED"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded text-sm font-medium ${filter === f ? "bg-cricket-green text-white" : "bg-gray-200 text-gray-700"}`}
-            >
-              {f === "all" ? "All" : f === "IN_PROGRESS" ? "Live" : "Completed"}
-            </button>
-          ))}
-        </div>
+        <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)} className="mb-4">
+          <TabsList className="grid w-full grid-cols-3 bg-muted p-1">
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="IN_PROGRESS">Live</TabsTrigger>
+            <TabsTrigger value="COMPLETED">Completed</TabsTrigger>
+          </TabsList>
+        </Tabs>
         {loading ? (
-          <p className="text-gray-500">Loading...</p>
+          <div className="flex justify-center py-12">
+            <span className="text-muted-foreground">Loading...</span>
+          </div>
+        ) : matches.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <p className="text-muted-foreground mb-2">No matches yet</p>
+              <Button variant="link" className="text-primary p-0 h-auto" asChild>
+                <Link href="/matches/new">Start a new match →</Link>
+              </Button>
+            </CardContent>
+          </Card>
         ) : (
           <ul className="space-y-2">
             {matches.map((m) => (
-              <li key={m._id}>
+              <Card key={m._id} className="border-0 shadow-card">
                 <Link
                   href={m.status === "IN_PROGRESS" ? `/matches/${m._id}/score` : `/matches/${m._id}/scorecard`}
-                  className="block py-3 px-4 bg-white rounded-lg shadow-sm border border-gray-100"
                 >
-                  <div className="font-medium">{m.matchName}</div>
-                  <div className="text-sm text-gray-600">
-                    {teams[m.teamAId]?.teamName ?? "Team A"} vs {teams[m.teamBId]?.teamName ?? "Team B"}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {new Date(m.date).toLocaleDateString()} · {m.status}
-                  </div>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-foreground truncate">{m.matchName}</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                          {teams[m.teamAId]?.teamName ?? "Team A"} vs {teams[m.teamBId]?.teamName ?? "Team B"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(m.date).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <span
+                        className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium ${
+                          m.status === "IN_PROGRESS"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {m.status === "IN_PROGRESS" ? "Live" : "Done"}
+                      </span>
+                    </div>
+                  </CardContent>
                 </Link>
-              </li>
+              </Card>
             ))}
           </ul>
         )}

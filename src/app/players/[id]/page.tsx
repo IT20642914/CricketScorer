@@ -2,10 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const schema = z.object({
   fullName: z.string().min(1),
@@ -21,7 +26,7 @@ export default function EditPlayerPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
 
@@ -52,32 +57,55 @@ export default function EditPlayerPage() {
     router.push("/players");
   }
 
-  if (loading) return <div className="p-4">Loading...</div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
+        <span className="text-muted-foreground">Loading...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-cricket-cream">
-      <header className="bg-cricket-green text-white px-4 py-4 flex items-center gap-2">
-        <Link href="/players" className="text-white">←</Link>
-        <h1 className="text-xl font-bold">Edit Player</h1>
+      <header className="page-header">
+        <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 -ml-2" asChild>
+          <Link href="/players">←</Link>
+        </Button>
+        <h1 className="text-xl font-bold flex-1 text-center">Edit Player</h1>
+        <div className="w-10" />
       </header>
       <main className="p-4 max-w-lg mx-auto">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full name *</label>
-            <input {...register("fullName")} className="w-full px-4 py-3 rounded-lg border border-gray-300" />
-            {errors.fullName && <p className="text-red-600 text-sm mt-1">{errors.fullName.message}</p>}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Short name</label>
-            <input {...register("shortName")} className="w-full px-4 py-3 rounded-lg border border-gray-300" />
-          </div>
-          <div className="flex items-center gap-2">
-            <input type="checkbox" {...register("isKeeper")} id="keeper" />
-            <label htmlFor="keeper">Wicket keeper</label>
-          </div>
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-          <button type="submit" className="w-full py-3 rounded-lg bg-cricket-green text-white font-semibold">Save</button>
-        </form>
+        <Card>
+          <CardContent className="p-5 pt-6">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="fullName">Full name *</Label>
+                <Input id="fullName" {...register("fullName")} className="h-11" />
+                {errors.fullName && (
+                  <p className="text-sm text-destructive">{errors.fullName.message}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="shortName">Short name</Label>
+                <Input id="shortName" {...register("shortName")} className="h-11" />
+              </div>
+              <Controller
+                name="isKeeper"
+                control={control}
+                render={({ field }) => (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="keeper" checked={field.value} onCheckedChange={field.onChange} />
+                    <Label htmlFor="keeper" className="cursor-pointer font-normal">Wicket keeper</Label>
+                  </div>
+                )}
+              />
+              {error && (
+                <p className="text-sm text-destructive bg-destructive/10 py-2 px-3 rounded-md">{error}</p>
+              )}
+              <Button type="submit" className="w-full h-11">Save</Button>
+            </form>
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

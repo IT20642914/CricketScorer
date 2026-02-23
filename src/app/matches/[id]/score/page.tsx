@@ -8,8 +8,33 @@ import {
   getCurrentBattersSimple,
   shouldEndInnings,
   ballCounts,
+  computeBattingCard,
+  computeBowlingFigures,
 } from "@/lib/engine";
 import type { Match, BallEvent, RulesConfig } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Player {
   _id: string;
@@ -29,6 +54,10 @@ export default function ScorePage() {
   const [wicketBatterId, setWicketBatterId] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [activeTab, setActiveTab] = useState<"score" | "batting" | "bowling">("score");
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [showSuperOverConfig, setShowSuperOverConfig] = useState(false);
+  const [superOverBallsPerOver, setSuperOverBallsPerOver] = useState(6);
 
   const loadMatch = useCallback(async (id: string) => {
     const [mRes, pRes] = await Promise.all([
@@ -67,28 +96,37 @@ export default function ScorePage() {
   const battingOrder = (match?.teamAId === battingTeamId ? match?.playingXI_A : match?.playingXI_B) ?? [];
   const bowlingOrder = (match?.teamAId === bowlingTeamId ? match?.playingXI_A : match?.playingXI_B) ?? [];
 
-  const summary = currentInnings ? computeInningsSummary(events, rules) : null;
+  const effectiveBallsPerOver = currentInnings?.ballsPerOver ?? rules.ballsPerOver;
+  const summary = currentInnings ? computeInningsSummary(events, rules, effectiveBallsPerOver) : null;
+  const battingCard = currentInnings ? computeBattingCard(events, battingOrder) : [];
+  const bowlingFigures = currentInnings ? computeBowlingFigures(events, rules, bowlingOrder, effectiveBallsPerOver).filter((f) => f.overs > 0 || f.balls > 0) : [];
   const { strikerId, nonStrikerId } = currentInnings
     ? getCurrentBattersSimple(events, battingOrder, rules)
     : { strikerId: "", nonStrikerId: "" };
 
   const totalBallsBowled = summary?.totalBallsBowled ?? 0;
-  const overJustFinished = totalBallsBowled > 0 && totalBallsBowled % rules.ballsPerOver === 0;
+  const overJustFinished = totalBallsBowled > 0 && totalBallsBowled % effectiveBallsPerOver === 0;
 
   useEffect(() => {
     if (overJustFinished) setShowNextBowler(true);
   }, [overJustFinished]);
 
+  const inningsIndex = (match?.innings?.length ?? 1) - 1;
+  const maxOversForInnings = currentInnings?.maxOvers ?? rules.oversPerInnings;
+  const isSuperOver = (currentInnings?.maxOvers ?? 0) > 0 && maxOversForInnings < rules.oversPerInnings;
   const isSecondInnings = (match?.innings?.length ?? 0) >= 2;
-  const firstInningsRuns = match?.innings?.[0] ? computeInningsSummary(match.innings[0].events ?? [], rules).totalRuns : 0;
+  const isChasingInnings = inningsIndex % 2 === 1;
+  const prevInnings = inningsIndex > 0 ? match?.innings?.[inningsIndex - 1] : null;
+  const prevBpo = prevInnings?.ballsPerOver ?? rules.ballsPerOver;
+  const firstInningsRuns = prevInnings ? computeInningsSummary(prevInnings.events ?? [], rules, prevBpo).totalRuns : 0;
   const target = firstInningsRuns + 1;
   const currentRuns = summary?.totalRuns ?? 0;
-  const maxBalls = rules.oversPerInnings * rules.ballsPerOver;
+  const maxBalls = maxOversForInnings * effectiveBallsPerOver;
   const ballsLeft = Math.max(0, maxBalls - totalBallsBowled);
   const runsNeeded = Math.max(0, target - currentRuns);
-  const requiredRR = ballsLeft > 0 ? (runsNeeded / (ballsLeft / rules.ballsPerOver)) : 0;
+  const requiredRR = ballsLeft > 0 ? (runsNeeded / (ballsLeft / effectiveBallsPerOver)) : 0;
 
-  const shouldEnd = currentInnings ? shouldEndInnings(events, rules, battingOrder) : { end: false };
+  const shouldEnd = currentInnings ? shouldEndInnings(events, rules, battingOrder, currentInnings.maxOvers, effectiveBallsPerOver, currentInnings.maxWickets) : { end: false };
 
   useEffect(() => {
     if (shouldEnd.end) setShowInningsOver(true);
@@ -135,6 +173,9 @@ export default function ScorePage() {
       battingTeamId: current.bowlingTeamId,
       bowlingTeamId: current.battingTeamId,
       events: [] as BallEvent[],
+      ...(current.maxOvers != null && { maxOvers: current.maxOvers }),
+      ...(current.ballsPerOver != null && { ballsPerOver: current.ballsPerOver }),
+      ...(current.maxWickets != null && { maxWickets: current.maxWickets }),
     };
     const res = await fetch(`/api/matches/${matchId}`, {
       method: "PATCH",
@@ -151,10 +192,41 @@ export default function ScorePage() {
     setSending(false);
   }
 
-  async function endMatch() {
+  function selectNextBowler(id: string) {
+    setCurrentBowlerId(id);
+    setShowNextBowler(false);
+  }
+
+  /** Compute result for display (who won or tie). Uses last two innings for main or super over. */
+  function getMatchResult(): { message: string; isTie: boolean; isSuperOver?: boolean } {
+    const inns = match?.innings ?? [];
+    const isSO = inns.length >= 4;
+    const first = isSO ? inns[2] : inns[0];
+    const second = isSO ? inns[3] : inns[1];
+    if (!first || !second) return { message: "", isTie: false };
+    const bpo1 = first.ballsPerOver ?? rules.ballsPerOver;
+    const bpo2 = second.ballsPerOver ?? rules.ballsPerOver;
+    const r1 = computeInningsSummary(first.events ?? [], rules, bpo1).totalRuns;
+    const w1 = computeInningsSummary(first.events ?? [], rules, bpo1).wickets;
+    const r2 = computeInningsSummary(second.events ?? [], rules, bpo2).totalRuns;
+    const w2 = computeInningsSummary(second.events ?? [], rules, bpo2).wickets;
+    const team1Bat = first.battingTeamId;
+    const team2Bat = second.battingTeamId;
+    const team1Name = match?.teamAId === team1Bat ? "Team A" : "Team B";
+    const team2Name = match?.teamAId === team2Bat ? "Team A" : "Team B";
+    const maxWk = (match?.playingXI_A?.length ?? 11) - 1;
+    if (r2 > r1) return { message: `${team2Name} won by ${maxWk - w2} wicket${maxWk - w2 !== 1 ? "s" : ""}`, isTie: false, isSuperOver: isSO };
+    if (r2 < r1) return { message: `${team1Name} won by ${r1 - r2} run${r1 - r2 !== 1 ? "s" : ""}`, isTie: false, isSuperOver: isSO };
+    return { message: "Match tied", isTie: true, isSuperOver: isSO };
+  }
+
+  function openResultModal() {
+    setShowResultModal(true);
+  }
+
+  async function confirmEndMatch() {
     if (!matchId || sending) return;
     setSending(true);
-    setShowInningsOver(false);
     const res = await fetch(`/api/matches/${matchId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -162,12 +234,36 @@ export default function ScorePage() {
     });
     const data = await res.json();
     if (data._id) setMatch(data);
+    setShowResultModal(false);
+    setShowInningsOver(false);
     setSending(false);
   }
 
-  function selectNextBowler(id: string) {
-    setCurrentBowlerId(id);
-    setShowNextBowler(false);
+  async function startSuperOver(ballsPerOver: number = 6) {
+    if (!matchId || !match || sending) return;
+    setSending(true);
+    setShowResultModal(false);
+    setShowSuperOverConfig(false);
+    setShowInningsOver(false);
+    const firstInn = match.innings[0];
+    if (!firstInn) { setSending(false); return; }
+    const teamBatFirst = firstInn.battingTeamId;
+    const teamBowlFirst = firstInn.bowlingTeamId;
+    const so1 = { battingTeamId: teamBowlFirst, bowlingTeamId: teamBatFirst, events: [] as BallEvent[], maxOvers: 1, ballsPerOver, maxWickets: 2 };
+    const so2 = { battingTeamId: teamBatFirst, bowlingTeamId: teamBowlFirst, events: [] as BallEvent[], maxOvers: 1, ballsPerOver, maxWickets: 2 };
+    const res = await fetch(`/api/matches/${matchId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ innings: [...(match.innings ?? []), so1, so2], status: "IN_PROGRESS" }),
+    });
+    const data = await res.json();
+    if (data._id) {
+      setMatch(data);
+      const newInn = data.innings?.[data.innings.length - 1];
+      const newBowl = data.teamAId === newInn?.bowlingTeamId ? (data.playingXI_A ?? []) : (data.playingXI_B ?? []);
+      setCurrentBowlerId(newBowl[0] ?? "");
+    }
+    setSending(false);
   }
 
   if (loading || !match) {
@@ -187,41 +283,72 @@ export default function ScorePage() {
     );
   }
 
-  const overStr = summary ? formatOvers(summary, rules.ballsPerOver) : "0";
+  const overStr = summary ? formatOvers(summary, effectiveBallsPerOver) : "0";
 
   return (
     <div className="min-h-screen bg-cricket-cream pb-32 safe-area-pb">
-      <header className="bg-cricket-green text-white px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow-md">
-        <Link href="/matches" className="p-2 -m-2 text-white touch-manipulation">← Back</Link>
+      <header className="page-header">
+        <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 -ml-2" asChild>
+          <Link href="/matches">← Back</Link>
+        </Button>
         <h1 className="text-lg font-bold truncate flex-1 text-center mx-2">{match.matchName}</h1>
-        <Link href={`/matches/${matchId}/scorecard`} className="p-2 -m-2 text-white/90 text-sm touch-manipulation">Scorecard</Link>
+        <Button variant="ghost" size="sm" className="text-white/95 hover:bg-white/10" asChild>
+          <Link href={`/matches/${matchId}/scorecard`}>Scorecard</Link>
+        </Button>
       </header>
 
       <main className="p-4 max-w-lg mx-auto">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "score" | "batting" | "bowling")} className="space-y-4">
+          <TabsList className="grid w-full grid-cols-3 bg-muted p-1 rounded-xl h-12">
+            <TabsTrigger value="score" className="rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary">Score</TabsTrigger>
+            <TabsTrigger value="batting" className="rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary">Batting</TabsTrigger>
+            <TabsTrigger value="bowling" className="rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary">Bowling</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="score" className="mt-0 space-y-4">
         {/* Score card */}
-        <div className="bg-white rounded-2xl shadow-lg p-5 mb-5 border border-cricket-green/10">
-          <div className="flex items-baseline justify-between mb-1">
-            <span className="text-3xl font-bold text-cricket-green tabular-nums">
-              {summary?.totalRuns ?? 0} <span className="text-gray-400 font-normal">/</span> {summary?.wickets ?? 0}
-            </span>
-            <span className="text-lg text-gray-600 font-medium">Ov {overStr}</span>
+        <div className="bg-gradient-to-br from-white to-cricket-cream rounded-2xl shadow-lg p-5 mb-4 border border-cricket-green/20">
+          <div className="flex items-baseline justify-between gap-2">
+            <div>
+              {isSuperOver && (
+                <p className="text-xs font-semibold text-amber-600 mb-0.5">
+                  Super Over {currentInnings?.maxWickets != null ? `· ${currentInnings.maxWickets} wkts max` : ""}
+                </p>
+              )}
+              <span className="text-4xl font-bold text-cricket-green tabular-nums tracking-tight">
+                {summary?.totalRuns ?? 0}
+                <span className="text-gray-300 font-normal mx-0.5">/</span>
+                {summary?.wickets ?? 0}
+              </span>
+              <p className="text-xs text-gray-500 mt-0.5">in {overStr} of {maxOversForInnings} over{maxOversForInnings !== 1 ? "s" : ""}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-lg font-semibold text-gray-700">CRR</p>
+              <p className="text-xl font-bold text-cricket-green tabular-nums">{summary?.runRate ?? 0}</p>
+            </div>
           </div>
-          <div className="text-sm text-gray-500">CRR {summary?.runRate ?? 0}</div>
-          {isSecondInnings && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <div className="text-sm font-medium text-gray-700">Target {target}</div>
-              <div className="text-sm text-gray-600">
-                Need <span className="font-semibold text-cricket-green">{runsNeeded}</span> in <span className="font-semibold">{ballsLeft}</span> balls
-                {ballsLeft > 0 && <span> · RRR {requiredRR.toFixed(2)}</span>}
-              </div>
+          {isChasingInnings && firstInningsRuns > 0 && (
+            <div className="mt-4 pt-4 border-t border-cricket-green/10 rounded-lg bg-white/60 p-3">
+              <p className="text-sm font-medium text-gray-700">Target <span className="text-cricket-green font-bold">{target}</span></p>
+              <p className="text-sm text-gray-600">
+                Need <span className="font-bold text-cricket-green">{runsNeeded}</span> in <span className="font-bold">{ballsLeft}</span> balls
+                {ballsLeft > 0 && <span className="text-gray-500"> · RRR {requiredRR.toFixed(2)}</span>}
+              </p>
             </div>
           )}
         </div>
 
         {/* Striker & bowler */}
-        <div className="flex items-center justify-between mb-4 text-sm">
-          <span className="text-gray-600">Striker: <span className="font-medium text-gray-900">{playersMap[strikerId] ?? strikerId}</span></span>
-          <span className="text-gray-600">Bowler: <span className="font-medium text-gray-900">{playersMap[currentBowlerId] ?? currentBowlerId || "—"}</span></span>
+        <div className="flex items-center justify-between mb-4 px-1 text-sm">
+          <span className="text-gray-600">Striker: <span className="font-semibold text-gray-900">{playersMap[strikerId] ?? strikerId}</span></span>
+          <button
+            type="button"
+            onClick={() => setShowNextBowler(true)}
+            className="text-left py-1 pr-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 touch-manipulation"
+          >
+            <span className="text-gray-600">Bowler: </span>
+            <span className="font-semibold text-cricket-green underline decoration-dotted">{(playersMap[currentBowlerId] ?? currentBowlerId) || "Tap to set"}</span>
+          </button>
         </div>
 
         {/* Runs: 0 1 2 3 4 6 */}
@@ -291,37 +418,31 @@ export default function ScorePage() {
 
         {/* Wicket & Undo & End */}
         <div className="flex gap-2 flex-wrap">
-          <button
+          <Button
             onClick={() => setShowWicket(true)}
             disabled={sending || !currentBowlerId}
-            className="min-h-[48px] px-4 py-3 rounded-xl bg-red-600 text-white font-semibold shadow active:scale-95 touch-manipulation disabled:opacity-50"
+            variant="destructive"
+            className="min-h-[48px] px-4 rounded-xl"
           >
             Wicket
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={undoLast}
             disabled={sending || events.length === 0}
-            className="min-h-[48px] px-4 py-3 rounded-xl border-2 border-gray-300 text-gray-700 font-semibold active:scale-95 touch-manipulation disabled:opacity-50"
+            variant="outline"
+            className="min-h-[48px] px-4 rounded-xl"
           >
             Undo
-          </button>
+          </Button>
           {!isSecondInnings && (
-            <button
-              onClick={endInnings}
-              disabled={sending}
-              className="min-h-[48px] px-4 py-3 rounded-xl bg-amber-600 text-white font-semibold shadow active:scale-95 touch-manipulation"
-            >
+            <Button onClick={endInnings} disabled={sending} className="min-h-[48px] px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white">
               End innings
-            </button>
+            </Button>
           )}
-          {isSecondInnings && (runsNeeded <= 0 || shouldEnd.end) && (
-            <button
-              onClick={endMatch}
-              disabled={sending}
-              className="min-h-[48px] px-4 py-3 rounded-xl bg-red-600 text-white font-semibold shadow active:scale-95 touch-manipulation"
-            >
+          {isChasingInnings && (runsNeeded <= 0 || shouldEnd.end) && (
+            <Button onClick={openResultModal} disabled={sending} variant="destructive" className="min-h-[48px] px-4 rounded-xl">
               End match
-            </button>
+            </Button>
           )}
         </div>
 
@@ -333,7 +454,7 @@ export default function ScorePage() {
             const e = events[i];
             if (ballCounts(e, rules)) count++;
             thisOver.unshift(e);
-            if (count >= rules.ballsPerOver) break;
+            if (count >= effectiveBallsPerOver) break;
           }
           return (
             <div className="mt-5">
@@ -353,119 +474,249 @@ export default function ScorePage() {
             </div>
           );
         })()}
+          </TabsContent>
+
+          <TabsContent value="batting" className="mt-0">
+          <div className="bg-white rounded-2xl shadow-lg border border-cricket-green/10 overflow-hidden">
+            <div className="bg-cricket-green text-white px-4 py-2.5">
+              <h2 className="font-bold text-sm">Batting</h2>
+              <p className="text-xs text-white/80">{summary?.totalRuns ?? 0}/{summary?.wickets ?? 0} in {overStr} overs</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[320px]">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-2.5 pl-4 font-semibold text-gray-700">Batter</th>
+                    <th className="text-right py-2.5 pr-2 font-semibold text-gray-700">R</th>
+                    <th className="text-right py-2.5 pr-2 font-semibold text-gray-700">B</th>
+                    <th className="text-right py-2.5 pr-2 font-semibold text-gray-700">4s</th>
+                    <th className="text-right py-2.5 pr-2 font-semibold text-gray-700">6s</th>
+                    <th className="text-right py-2.5 pr-4 font-semibold text-gray-700">SR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {battingCard.map((b) => (
+                    <tr key={b.playerId} className="border-b border-gray-100">
+                      <td className="py-2.5 pl-4">
+                        <span className="font-medium text-gray-900">{playersMap[b.playerId] ?? b.playerId}</span>
+                        {b.dismissalText && <span className="block text-xs text-gray-500">{b.dismissalText}</span>}
+                      </td>
+                      <td className="text-right py-2.5 pr-2 font-semibold tabular-nums">{b.runs}{!b.out && (b.balls > 0 || b.runs > 0) ? "*" : ""}</td>
+                      <td className="text-right py-2.5 pr-2 text-gray-600 tabular-nums">{b.balls}</td>
+                      <td className="text-right py-2.5 pr-2 text-gray-600 tabular-nums">{b.fours}</td>
+                      <td className="text-right py-2.5 pr-2 text-gray-600 tabular-nums">{b.sixes}</td>
+                      <td className="text-right py-2.5 pr-4 text-gray-600 tabular-nums">{b.strikeRate}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {summary?.extrasBreakdown && Object.keys(summary.extrasBreakdown).length > 0 && (
+              <div className="px-4 py-2 border-t border-gray-100 text-xs text-gray-600">
+                Extras: {Object.entries(summary.extrasBreakdown).map(([k, v]) => `${k} ${v}`).join(", ")}
+              </div>
+            )}
+          </div>
+          </TabsContent>
+
+          <TabsContent value="bowling" className="mt-0">
+          <div className="bg-white rounded-2xl shadow-lg border border-cricket-green/10 overflow-hidden">
+            <div className="bg-cricket-green text-white px-4 py-2.5">
+              <h2 className="font-bold text-sm">Bowling</h2>
+              <p className="text-xs text-white/80">{summary?.totalRuns ?? 0}/{summary?.wickets ?? 0} in {overStr} overs</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[280px]">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    <th className="text-left py-2.5 pl-4 font-semibold text-gray-700">Bowler</th>
+                    <th className="text-right py-2.5 pr-2 font-semibold text-gray-700">O</th>
+                    <th className="text-right py-2.5 pr-2 font-semibold text-gray-700">R</th>
+                    <th className="text-right py-2.5 pr-2 font-semibold text-gray-700">W</th>
+                    <th className="text-right py-2.5 pr-4 font-semibold text-gray-700">Econ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bowlingFigures.map((f) => (
+                    <tr key={f.playerId} className="border-b border-gray-100">
+                      <td className="py-2.5 pl-4 font-medium text-gray-900">{playersMap[f.playerId] ?? f.playerId}</td>
+                      <td className="text-right py-2.5 pr-2 tabular-nums">{f.overs}.{f.balls}</td>
+                      <td className="text-right py-2.5 pr-2 tabular-nums">{f.runsConceded}</td>
+                      <td className="text-right py-2.5 pr-2 font-semibold tabular-nums">{f.wickets}</td>
+                      <td className="text-right py-2.5 pr-4 tabular-nums text-gray-600">{f.economy}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {bowlingFigures.length === 0 && (
+              <p className="px-4 py-6 text-center text-gray-500 text-sm">No bowling figures yet</p>
+            )}
+          </div>
+          </TabsContent>
+        </Tabs>
       </main>
 
-      {/* Next bowler (over finished, innings not over) */}
-      {showNextBowler && overJustFinished && !shouldEnd.end && (
-        <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-30 p-4 pb-8 safe-area-pb">
-          <div className="bg-white rounded-t-3xl rounded-b-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="p-4 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-cricket-green">Over complete</h3>
-              <p className="text-sm text-gray-600">Select next bowler</p>
-            </div>
-            <div className="p-4 max-h-64 overflow-y-auto">
-              {bowlingOrder.map((id) => (
-                <button
-                  key={id}
-                  onClick={() => selectNextBowler(id)}
-                  className={`w-full text-left py-3 px-4 rounded-xl font-medium touch-manipulation mb-1 ${currentBowlerId === id ? "bg-cricket-green text-white" : "bg-gray-100 text-gray-800 hover:bg-gray-200"}`}
-                >
-                  {playersMap[id] ?? id}
-                </button>
-              ))}
-            </div>
+      {/* Change bowler (after over or tap anytime) */}
+      <Sheet open={showNextBowler && !shouldEnd.end} onOpenChange={(open) => !open && setShowNextBowler(false)}>
+        <SheetContent side="bottom" className="rounded-t-2xl max-h-[80vh]">
+          <SheetHeader>
+            <SheetTitle className="text-primary">{overJustFinished ? "Over complete" : "Change bowler"}</SheetTitle>
+          </SheetHeader>
+          <div className="p-4 max-h-64 overflow-y-auto space-y-2">
+            {bowlingOrder.map((id) => (
+              <Button
+                key={id}
+                variant={currentBowlerId === id ? "default" : "secondary"}
+                className="w-full justify-start h-12 rounded-xl"
+                onClick={() => selectNextBowler(id)}
+              >
+                {playersMap[id] ?? id}
+              </Button>
+            ))}
           </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
 
       {/* Innings over */}
-      {showInningsOver && shouldEnd.end && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-30 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
-            <h3 className="text-xl font-bold text-cricket-green mb-1">Innings over</h3>
-            <p className="text-gray-600 mb-4">
-              {summary?.totalRuns ?? 0}/{summary?.wickets ?? 0} in {overStr} overs
-            </p>
-            {!isSecondInnings ? (
-              <button
-                onClick={endInnings}
-                disabled={sending}
-                className="w-full py-4 rounded-xl bg-cricket-green text-white font-bold text-lg touch-manipulation disabled:opacity-50"
-              >
-                Start 2nd innings
-              </button>
+      <Dialog open={showInningsOver && shouldEnd.end} onOpenChange={(open) => !open && setShowInningsOver(false)}>
+        <DialogContent className="max-w-sm text-center">
+          <DialogHeader>
+            <DialogTitle className="text-primary">Innings over</DialogTitle>
+          </DialogHeader>
+          <p className="text-muted-foreground">
+            {summary?.totalRuns ?? 0}/{summary?.wickets ?? 0} in {overStr} overs
+          </p>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            {inningsIndex % 2 === 0 ? (
+              <Button onClick={endInnings} disabled={sending} className="w-full h-12">
+                {isSuperOver ? "Start Super Over 2" : "Start 2nd innings"}
+              </Button>
             ) : (
-              <button
-                onClick={endMatch}
-                disabled={sending}
-                className="w-full py-4 rounded-xl bg-red-600 text-white font-bold text-lg touch-manipulation disabled:opacity-50"
-              >
+              <Button variant="destructive" onClick={() => { setShowInningsOver(false); openResultModal(); }} disabled={sending} className="w-full h-12">
                 End match
-              </button>
+              </Button>
             )}
-            <button
-              onClick={() => setShowInningsOver(false)}
-              className="w-full mt-2 py-2 text-gray-500 text-sm"
-            >
+            <Button variant="ghost" onClick={() => setShowInningsOver(false)} className="w-full">
               Cancel
-            </button>
-          </div>
-        </div>
-      )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Wicket modal */}
-      {showWicket && (
-        <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-30 p-4 pb-8 safe-area-pb">
-          <div className="bg-white rounded-t-3xl rounded-b-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="p-4 border-b border-gray-100">
-              <h3 className="text-lg font-bold">Wicket</h3>
+      {/* Result modal (who won / tie → Super Over) */}
+      <Dialog open={showResultModal} onOpenChange={(open) => !open && setShowResultModal(false)}>
+        <DialogContent className="max-w-sm text-center">
+          <DialogHeader>
+            <DialogTitle className="text-primary">Result</DialogTitle>
+          </DialogHeader>
+          {showResultModal && (() => {
+            const result = getMatchResult();
+            const canSuperOver = result.isTie && !result.isSuperOver && (match?.innings?.length ?? 0) >= 2;
+            return (
+              <>
+                <p className="text-lg font-semibold">{result.message}</p>
+                {result.isSuperOver && <p className="text-sm text-muted-foreground">(Super over)</p>}
+                <DialogFooter className="flex-col gap-2 sm:flex-col">
+                  <Button onClick={confirmEndMatch} disabled={sending} className="w-full h-11">Done</Button>
+                  {canSuperOver && (
+                    <Button onClick={() => { setShowResultModal(false); setShowSuperOverConfig(true); }} disabled={sending} className="w-full h-11 bg-amber-500 hover:bg-amber-600 text-white">
+                      Go to Super Over
+                    </Button>
+                  )}
+                  <Button variant="ghost" onClick={() => setShowResultModal(false)} className="w-full">Cancel</Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Super Over config: balls per over */}
+      <Dialog open={showSuperOverConfig} onOpenChange={(open) => !open && setShowSuperOverConfig(false)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-primary">Super Over</DialogTitle>
+          </DialogHeader>
+          <Label className="text-muted-foreground">Balls per over</Label>
+          <div className="flex gap-2">
+            {[4, 5, 6].map((n) => (
+              <Button
+                key={n}
+                type="button"
+                variant={superOverBallsPerOver === n ? "default" : "secondary"}
+                className="flex-1 h-12 rounded-xl"
+                onClick={() => setSuperOverBallsPerOver(n)}
+              >
+                {n}
+              </Button>
+            ))}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setShowSuperOverConfig(false)} className="flex-1">
+              Back
+            </Button>
+            <Button onClick={() => startSuperOver(superOverBallsPerOver)} disabled={sending} className="flex-1 bg-amber-500 hover:bg-amber-600 text-white">
+              Start Super Over
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Wicket sheet */}
+      <Sheet open={showWicket} onOpenChange={(open) => !open && setShowWicket(false)}>
+        <SheetContent side="bottom" className="rounded-t-2xl">
+          <SheetHeader>
+            <SheetTitle>Wicket</SheetTitle>
+          </SheetHeader>
+          <div className="p-4 space-y-4">
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={wicketKind} onValueChange={(v) => setWicketKind(v as typeof wicketKind)}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BOWLED">Bowled</SelectItem>
+                  <SelectItem value="CAUGHT">Caught</SelectItem>
+                  <SelectItem value="LBW">LBW</SelectItem>
+                  <SelectItem value="RUN_OUT">Run out</SelectItem>
+                  <SelectItem value="STUMPED">Stumped</SelectItem>
+                  <SelectItem value="HIT_WICKET">Hit wicket</SelectItem>
+                  <SelectItem value="RETIRED">Retired</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="p-4 space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                <select
-                  value={wicketKind}
-                  onChange={(e) => setWicketKind(e.target.value as typeof wicketKind)}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-300"
-                >
-                  <option value="BOWLED">Bowled</option>
-                  <option value="CAUGHT">Caught</option>
-                  <option value="LBW">LBW</option>
-                  <option value="RUN_OUT">Run out</option>
-                  <option value="STUMPED">Stumped</option>
-                  <option value="HIT_WICKET">Hit wicket</option>
-                  <option value="RETIRED">Retired</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Batter out</label>
-                <select
-                  value={wicketBatterId}
-                  onChange={(e) => setWicketBatterId(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-300"
-                >
-                  <option value="">Select</option>
+            <div className="space-y-2">
+              <Label>Batter out</Label>
+              <Select value={wicketBatterId || "_"} onValueChange={(v) => setWicketBatterId(v === "_" ? "" : v)}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Select batter" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">Select</SelectItem>
                   {battingOrder.map((id) => (
-                    <option key={id} value={id}>{playersMap[id] ?? id}</option>
+                    <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
                   ))}
-                </select>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button onClick={() => setShowWicket(false)} className="flex-1 py-3 rounded-xl border-2 border-gray-300 font-medium">
-                  Cancel
-                </button>
-                <button
-                  onClick={() => wicketBatterId && addBall({ runsOffBat: 0, wicket: { kind: wicketKind, batterOutId: wicketBatterId } })}
-                  disabled={!wicketBatterId || sending}
-                  className="flex-1 py-3 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-50"
-                >
-                  Add wicket
-                </button>
-              </div>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowWicket(false)} className="flex-1 h-12 rounded-xl">
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => wicketBatterId && addBall({ runsOffBat: 0, wicket: { kind: wicketKind, batterOutId: wicketBatterId } })}
+                disabled={!wicketBatterId || sending}
+                className="flex-1 h-12 rounded-xl"
+              >
+                Add wicket
+              </Button>
             </div>
           </div>
-        </div>
-      )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

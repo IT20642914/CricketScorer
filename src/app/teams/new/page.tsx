@@ -6,6 +6,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface Player {
   _id: string;
@@ -57,42 +62,50 @@ export default function NewTeamPage() {
 
   return (
     <div className="min-h-screen bg-cricket-cream">
-      <header className="bg-cricket-green text-white px-4 py-4 flex items-center gap-2">
-        <Link href="/teams" className="text-white">←</Link>
-        <h1 className="text-xl font-bold">New Team</h1>
+      <header className="page-header">
+        <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 -ml-2" asChild>
+          <Link href="/teams">←</Link>
+        </Button>
+        <h1 className="text-xl font-bold flex-1 text-center">New Team</h1>
+        <div className="w-10" />
       </header>
       <main className="p-4 max-w-lg mx-auto">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Team name *</label>
-            <input
-              {...register("teamName")}
-              className="w-full px-4 py-3 rounded-lg border border-gray-300"
-              placeholder="e.g. Tigers XI"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Select players</label>
-            <ul className="space-y-2 max-h-60 overflow-y-auto">
-              {players.map((p) => (
-                <li key={p._id}>
-                  <label className="flex items-center gap-2 py-2 px-3 bg-white rounded border cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={playerIds.includes(p._id)}
-                      onChange={() => togglePlayer(p._id)}
-                    />
-                    <span>{p.fullName}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </div>
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-          <button type="submit" className="w-full py-3 rounded-lg bg-cricket-green text-white font-semibold">
-            Create Team
-          </button>
-        </form>
+        <Card>
+          <CardContent className="p-5 pt-6">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="teamName">Team name *</Label>
+                <Input
+                  id="teamName"
+                  {...register("teamName")}
+                  placeholder="e.g. Tigers XI"
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Select players</Label>
+                <ul className="space-y-1.5 max-h-56 overflow-y-auto rounded-md border border-input bg-muted/30 p-2">
+                  {players.map((p) => (
+                    <li key={p._id}>
+                      <label className="flex items-center gap-3 py-2.5 px-3 rounded-md hover:bg-background cursor-pointer">
+                        <Checkbox
+                          checked={playerIds.includes(p._id)}
+                          onCheckedChange={() => togglePlayer(p._id)}
+                        />
+                        <span className="text-sm font-medium">{p.fullName}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground">{playerIds.length} selected</p>
+              </div>
+              {error && (
+                <p className="text-sm text-destructive bg-destructive/10 py-2 px-3 rounded-md">{error}</p>
+              )}
+              <Button type="submit" className="w-full h-11">Create Team</Button>
+            </form>
+          </CardContent>
+        </Card>
       </main>
     </div>
   );

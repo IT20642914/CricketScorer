@@ -19,8 +19,10 @@ export function ballCounts(e: BallEvent, rules: RulesConfig): boolean {
 /** Compute innings summary from events and rules. */
 export function computeInningsSummary(
   events: BallEvent[],
-  rules: RulesConfig
+  rules: RulesConfig,
+  ballsPerOverOverride?: number
 ): InningsSummary {
+  const bpo = ballsPerOverOverride ?? rules.ballsPerOver;
   let totalRuns = 0;
   let wickets = 0;
   let balls = 0;
@@ -36,10 +38,10 @@ export function computeInningsSummary(
     if (ballCounts(e, rules)) balls += 1;
   }
 
-  const overs = Math.floor(balls / rules.ballsPerOver);
-  const ballsInOver = balls % rules.ballsPerOver;
+  const overs = Math.floor(balls / bpo);
+  const ballsInOver = balls % bpo;
   const totalBallsBowled = balls;
-  const runRate = totalBallsBowled > 0 ? totalRuns / (totalBallsBowled / rules.ballsPerOver) : 0;
+  const runRate = totalBallsBowled > 0 ? totalRuns / (totalBallsBowled / bpo) : 0;
 
   return {
     totalRuns,
@@ -133,8 +135,10 @@ function formatDismissal(kind: WicketKind, fielderId?: string): string {
 export function computeBowlingFigures(
   events: BallEvent[],
   rules: RulesConfig,
-  bowlingTeamPlayerIds: string[]
+  bowlingTeamPlayerIds: string[],
+  ballsPerOverOverride?: number
 ): BowlingEntry[] {
+  const bpo = ballsPerOverOverride ?? rules.ballsPerOver;
   const byBowler: Record<string, { balls: number; runs: number; wickets: number }> = {};
   for (const id of bowlingTeamPlayerIds) {
     byBowler[id] = { balls: 0, runs: 0, wickets: 0 };
@@ -152,12 +156,12 @@ export function computeBowlingFigures(
   return bowlingTeamPlayerIds.map((playerId) => {
     const p = byBowler[playerId] ?? { balls: 0, runs: 0, wickets: 0 };
     const totalBalls = p.balls;
-    const overs = Math.floor(totalBalls / rules.ballsPerOver) + (totalBalls % rules.ballsPerOver) / rules.ballsPerOver;
+    const overs = Math.floor(totalBalls / bpo) + (totalBalls % bpo) / bpo;
     const economy = overs > 0 ? p.runs / overs : 0;
     return {
       playerId,
-      overs: Math.floor(totalBalls / rules.ballsPerOver),
-      balls: totalBalls % rules.ballsPerOver,
+      overs: Math.floor(totalBalls / bpo),
+      balls: totalBalls % bpo,
       runsConceded: p.runs,
       wickets: p.wickets,
       economy: Math.round(economy * 100) / 100,
@@ -294,13 +298,20 @@ export function getCurrentBattersSimple(
 export function shouldEndInnings(
   events: BallEvent[],
   rules: RulesConfig,
-  battingOrder: string[]
+  battingOrder: string[],
+  maxOversOverride?: number,
+  ballsPerOverOverride?: number,
+  maxWicketsOverride?: number
 ): { end: boolean; reason?: "ALL_OUT" | "OVERS_COMPLETE" } {
-  const summary = computeInningsSummary(events, rules);
-  const maxBalls = rules.oversPerInnings * rules.ballsPerOver;
+  const bpo = ballsPerOverOverride ?? rules.ballsPerOver;
+  const summary = computeInningsSummary(events, rules, bpo);
+  const oversLimit = maxOversOverride ?? rules.oversPerInnings;
+  const maxBalls = oversLimit * bpo;
   if (summary.totalBallsBowled >= maxBalls) return { end: true, reason: "OVERS_COMPLETE" };
   const wicketsLost = summary.wickets;
-  const maxWickets = rules.lastManStandingRule ? battingOrder.length : battingOrder.length - 1;
+  const maxWickets =
+    maxWicketsOverride ??
+    (rules.lastManStandingRule ? battingOrder.length : battingOrder.length - 1);
   if (wicketsLost >= maxWickets) return { end: true, reason: "ALL_OUT" };
   return { end: false };
 }

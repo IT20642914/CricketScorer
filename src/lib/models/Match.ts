@@ -43,6 +43,9 @@ const InningsSchema = new Schema<Innings>(
     battingTeamId: String,
     bowlingTeamId: String,
     events: [BallEventSchema],
+    maxOvers: Number,
+    ballsPerOver: Number,
+    maxWickets: Number,
   },
   { _id: false }
 );

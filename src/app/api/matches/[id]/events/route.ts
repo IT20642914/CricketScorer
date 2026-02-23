@@ -5,13 +5,13 @@ import { MatchModel } from "@/lib/models";
 import { ballEventInputSchema } from "@/lib/validations";
 import { ballCounts } from "@/lib/engine";
 
-function nextOverAndBall(events: { extras?: { type: string | null }; wicket?: unknown }[], rules: { ballsPerOver: number }): { overNumber: number; ballInOver: number } {
+function nextOverAndBall(events: { extras?: { type: string | null }; wicket?: unknown }[], ballsPerOver: number, rules: { ballsPerOver: number }): { overNumber: number; ballInOver: number } {
   let logicalBalls = 0;
   for (const e of events) {
     if (ballCounts(e as Parameters<typeof ballCounts>[0], rules as Parameters<typeof ballCounts>[1])) logicalBalls += 1;
   }
-  const overNumber = Math.floor(logicalBalls / rules.ballsPerOver) + 1;
-  const ballInOver = (logicalBalls % rules.ballsPerOver) + 1;
+  const overNumber = Math.floor(logicalBalls / ballsPerOver) + 1;
+  const ballInOver = (logicalBalls % ballsPerOver) + 1;
   return { overNumber, ballInOver };
 }
 
@@ -38,7 +38,8 @@ export async function POST(
     }
     const innings = match.innings[inningsIndex];
     const events = innings.events ?? [];
-    const { overNumber, ballInOver } = nextOverAndBall(events, match.rulesConfig);
+    const bpo = innings.ballsPerOver ?? match.rulesConfig.ballsPerOver;
+    const { overNumber, ballInOver } = nextOverAndBall(events, bpo, match.rulesConfig);
     const eventId = new mongoose.Types.ObjectId().toString();
     const event = {
       _id: eventId,
