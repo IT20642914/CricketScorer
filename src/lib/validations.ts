@@ -3,6 +3,7 @@ import { z } from "zod";
 export const playerSchema = z.object({
   fullName: z.string().min(1),
   shortName: z.string().optional(),
+  email: z.union([z.string().email(), z.literal("")]).optional().transform((s) => (s === "" ? undefined : s)),
   battingStyle: z.enum(["RIGHT", "LEFT"]).optional(),
   bowlingStyle: z.string().optional(),
   isKeeper: z.boolean().optional(),

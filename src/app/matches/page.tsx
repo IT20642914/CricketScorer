@@ -13,6 +13,7 @@ interface Match {
   status: string;
   teamAId: string;
   teamBId: string;
+  updatedAt?: string;
 }
 
 interface Team {
@@ -31,7 +32,17 @@ export default function MatchesPage() {
     fetch(`/api/matches${q}`)
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setMatches(data);
+        if (Array.isArray(data)) {
+          const sorted = [...data].sort((a, b) => {
+            const dateA = new Date(a.date).getTime();
+            const dateB = new Date(b.date).getTime();
+            if (dateB !== dateA) return dateB - dateA;
+            const upA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const upB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return upB - upA;
+          });
+          setMatches(sorted);
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -56,11 +67,18 @@ export default function MatchesPage() {
           <Link href="/">←</Link>
         </Button>
         <h1 className="text-xl font-bold flex-1 text-center">Match History</h1>
-        <Button size="sm" className="bg-white text-primary hover:bg-white/90" asChild>
-          <Link href="/matches/new">New</Link>
-        </Button>
+        <div className="w-10" />
       </header>
       <main className="p-4 max-w-lg mx-auto">
+        <div className="flex justify-end mb-4">
+          <Button
+            size="default"
+            className="h-11 bg-cricket-green text-white hover:bg-cricket-green/90 border border-cricket-green shadow-sm font-medium px-4"
+            asChild
+          >
+            <Link href="/matches/new">New match</Link>
+          </Button>
+        </div>
         <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)} className="mb-4">
           <TabsList className="grid w-full grid-cols-3 bg-muted p-1">
             <TabsTrigger value="all">All</TabsTrigger>
@@ -87,6 +105,7 @@ export default function MatchesPage() {
               <Card key={m._id} className="border-0 shadow-card">
                 <Link
                   href={m.status === "IN_PROGRESS" ? `/matches/${m._id}/score` : `/matches/${m._id}/scorecard`}
+                  className="block"
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-2">
@@ -111,6 +130,18 @@ export default function MatchesPage() {
                     </div>
                   </CardContent>
                 </Link>
+                <div className="px-4 pb-4 pt-0 flex justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9"
+                    asChild
+                  >
+                    <Link href={`/matches/new?rematch=${m._id}`} onClick={(e) => e.stopPropagation()}>
+                      Rematch
+                    </Link>
+                  </Button>
+                </div>
               </Card>
             ))}
           </ul>

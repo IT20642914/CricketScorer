@@ -7,6 +7,8 @@ export interface Player {
   _id: string;
   fullName: string;
   shortName?: string;
+  /** Optional email for future login; when user logs in, profile can show stats (batting/bowling skills, etc.). */
+  email?: string;
   battingStyle?: BattingStyle;
   bowlingStyle?: BowlingStyle;
   isKeeper?: boolean;
@@ -35,8 +37,8 @@ export const DEFAULT_RULES: RulesConfig = {
   ballsPerOver: 6,
   wideRuns: 1,
   noBallRuns: 1,
-  wideCountsAsBall: true,
-  noBallCountsAsBall: true,
+  wideCountsAsBall: false,
+  noBallCountsAsBall: false,
 };
 
 export type ExtrasType = "WD" | "NB" | "B" | "LB" | null;

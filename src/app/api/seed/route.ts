@@ -11,11 +11,11 @@ export async function GET() {
       return NextResponse.json({ message: "Data exists, skip seed", count: existing });
     }
     const names = [
-      "Alex Smith", "Ben Jones", "Chris Lee", "Dan Brown", "Eli Wilson",
-      "Finn Davis", "Gary Moore", "Harry Taylor", "Ian Clark", "Jack White",
-      "Kai Martin", "Leo Harris", "Max Thompson", "Noah Anderson", "Owen Jackson",
-      "Paul King", "Quinn Wright", "Ryan Scott", "Sam Green", "Tom Baker",
-      "Uma Patel", "Vic Singh",
+      "Avishka Chanaka", "Anjula Nirmala", "Kalana Madawa", "Sasanka Tharaka", "Ishan Tharusha",
+      "Sanjeew Lakmal", "Viraj Dananjaya", "Waniia Ayya",
+      "Dinesh Perera", "Nuwan Fernando", "Chaminda Silva", "Roshan Gunasekara", "Mahesh Jayawardene",
+      "Suresh Mendis", "Ramesh De Silva", "Kumar Wickramasinghe", "Asela Gunaratne", "Dimuth Karunaratne",
+      "Kusal Mendis", "Pathum Nissanka", "Charith Asalanka", "Dasun Shanaka",
     ];
     const players = await PlayerModel.insertMany(
       names.map((fullName) => ({

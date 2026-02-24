@@ -5,6 +5,7 @@ const PlayerSchema = new Schema<IPlayer>(
   {
     fullName: { type: String, required: true },
     shortName: String,
+    email: String,
     battingStyle: String,
     bowlingStyle: String,
     isKeeper: { type: Boolean, default: false },

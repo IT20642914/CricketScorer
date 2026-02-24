@@ -1,63 +1,86 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
 
-const schema = z.object({
-  fullName: z.string().min(1),
-  shortName: z.string().optional(),
-  isKeeper: z.boolean().optional(),
-});
+interface Player {
+  _id: string;
+  fullName: string;
+  shortName?: string;
+  email?: string;
+  isKeeper?: boolean;
+}
 
-type FormData = z.infer<typeof schema>;
+interface BattingStats {
+  runs: number;
+  balls: number;
+  innings: number;
+  dismissals: number;
+  average: number | null;
+  strikeRate: number | null;
+  fours: number;
+  sixes: number;
+  fifties: number;
+  hundreds: number;
+}
 
-export default function EditPlayerPage() {
+interface BowlingStats {
+  wickets: number;
+  runsConceded: number;
+  balls: number;
+  economy: number | null;
+  average: number | null;
+}
+
+interface StatsResponse {
+  matchesPlayed: number;
+  batting: BattingStats;
+  bowling: BowlingStats;
+  runsPerInnings: number[];
+}
+
+export default function PlayerStatsPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
+  const [player, setPlayer] = useState<Player | null>(null);
+  const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
-  });
 
   useEffect(() => {
-    fetch(`/api/players/${id}`)
-      .then((r) => {
-        if (r.status === 404) router.replace("/players");
+    Promise.all([
+      fetch(`/api/players/${id}`).then((r) => {
+        if (r.status === 404) return null;
         return r.json();
-      })
-      .then((data) => {
-        reset({ fullName: data.fullName, shortName: data.shortName ?? "", isKeeper: data.isKeeper ?? false });
+      }),
+      fetch(`/api/players/${id}/stats`).then((r) => r.json()),
+    ])
+      .then(([playerData, statsData]) => {
+        if (!playerData) {
+          setLoading(false);
+          router.replace("/players");
+          return;
+        }
+        setPlayer(playerData);
+        setStats(statsData);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [id, reset, router]);
+  }, [id, router]);
 
-  async function onSubmit(data: FormData) {
-    setError("");
-    const res = await fetch(`/api/players/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      setError("Failed to update");
-      return;
-    }
-    router.push("/players");
-  }
-
-  if (loading) {
+  if (loading || !player) {
     return (
       <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
         <span className="text-muted-foreground">Loading...</span>
@@ -65,47 +88,117 @@ export default function EditPlayerPage() {
     );
   }
 
+  const batting = stats?.batting ?? null;
+  const bowling = stats?.bowling ?? null;
+  const matchesPlayed = stats?.matchesPlayed ?? 0;
+  const runsPerInnings = stats?.runsPerInnings ?? [];
+
+  const chartData = runsPerInnings.map((runs, i) => ({
+    name: `Inn ${i + 1}`,
+    runs,
+  }));
+  const hasBatting = batting && (batting.innings > 0 || batting.runs > 0);
+  const hasBowling = bowling && (bowling.balls > 0 || bowling.wickets > 0);
+
   return (
     <div className="min-h-screen bg-cricket-cream">
       <header className="page-header">
         <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 -ml-2" asChild>
           <Link href="/players">←</Link>
         </Button>
-        <h1 className="text-xl font-bold flex-1 text-center">Edit Player</h1>
-        <div className="w-10" />
+        <h1 className="text-xl font-bold flex-1 text-center truncate px-2">
+          {player.fullName}
+        </h1>
+        <Button size="sm" className="bg-white text-primary hover:bg-white/90 shrink-0" asChild>
+          <Link href={`/players/${id}/edit`}>Edit</Link>
+        </Button>
       </header>
-      <main className="p-4 max-w-lg mx-auto">
-        <Card>
-          <CardContent className="p-5 pt-6">
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Full name *</Label>
-                <Input id="fullName" {...register("fullName")} className="h-11" />
-                {errors.fullName && (
-                  <p className="text-sm text-destructive">{errors.fullName.message}</p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="shortName">Short name</Label>
-                <Input id="shortName" {...register("shortName")} className="h-11" />
-              </div>
-              <Controller
-                name="isKeeper"
-                control={control}
-                render={({ field }) => (
-                  <div className="flex items-center space-x-2">
-                    <Checkbox id="keeper" checked={field.value} onCheckedChange={field.onChange} />
-                    <Label htmlFor="keeper" className="cursor-pointer font-normal">Wicket keeper</Label>
-                  </div>
-                )}
-              />
-              {error && (
-                <p className="text-sm text-destructive bg-destructive/10 py-2 px-3 rounded-md">{error}</p>
-              )}
-              <Button type="submit" className="w-full h-11">Save</Button>
-            </form>
+      <main className="p-4 max-w-lg mx-auto space-y-4">
+        <Card className="border-0 shadow-card">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Overview</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm text-muted-foreground">
+            <p><span className="font-medium text-foreground">Matches played</span> {matchesPlayed}</p>
+            {player.shortName && (
+              <p><span className="font-medium text-foreground">Short name</span> {player.shortName}</p>
+            )}
+            {player.isKeeper && (
+              <p className="text-primary font-medium">Wicket keeper</p>
+            )}
           </CardContent>
         </Card>
+
+        {hasBatting && batting && (
+          <Card className="border-0 shadow-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Batting</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <div><span className="text-muted-foreground">Runs</span> <span className="font-semibold">{batting.runs}</span></div>
+                <div><span className="text-muted-foreground">Innings</span> <span className="font-semibold">{batting.innings}</span></div>
+                <div><span className="text-muted-foreground">Average</span> <span className="font-semibold">{batting.average ?? "—"}</span></div>
+                <div><span className="text-muted-foreground">Strike rate</span> <span className="font-semibold">{batting.strikeRate ?? "—"}</span></div>
+                <div><span className="text-muted-foreground">4s</span> <span className="font-semibold">{batting.fours}</span></div>
+                <div><span className="text-muted-foreground">6s</span> <span className="font-semibold">{batting.sixes}</span></div>
+                <div><span className="text-muted-foreground">50s</span> <span className="font-semibold">{batting.fifties}</span></div>
+                <div><span className="text-muted-foreground">100s</span> <span className="font-semibold">{batting.hundreds}</span></div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {hasBowling && bowling && (
+          <Card className="border-0 shadow-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Bowling</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <div><span className="text-muted-foreground">Wickets</span> <span className="font-semibold">{bowling.wickets}</span></div>
+                <div><span className="text-muted-foreground">Runs conceded</span> <span className="font-semibold">{bowling.runsConceded}</span></div>
+                <div><span className="text-muted-foreground">Economy</span> <span className="font-semibold">{bowling.economy ?? "—"}</span></div>
+                <div><span className="text-muted-foreground">Average</span> <span className="font-semibold">{bowling.average ?? "—"}</span></div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {chartData.length > 0 && (
+          <Card className="border-0 shadow-card">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Runs per innings</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip
+                      formatter={(value: number | undefined) => [value ?? 0, "Runs"]}
+                      labelFormatter={(label) => label}
+                    />
+                    <Bar dataKey="runs" radius={[4, 4, 0, 0]}>
+                      {chartData.map((_, index) => (
+                        <Cell key={index} fill="hsl(var(--primary))" />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!hasBatting && !hasBowling && matchesPlayed === 0 && (
+          <Card className="border-0 shadow-card">
+            <CardContent className="py-8 text-center text-muted-foreground text-sm">
+              No match stats yet. Stats will appear once this player has played in matches.
+            </CardContent>
+          </Card>
+        )}
       </main>
     </div>
   );

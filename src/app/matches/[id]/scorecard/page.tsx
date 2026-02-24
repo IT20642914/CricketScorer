@@ -15,9 +15,15 @@ interface Player {
   fullName: string;
 }
 
+interface Team {
+  _id: string;
+  teamName: string;
+}
+
 export default function ScorecardPage() {
   const [match, setMatch] = useState<Match | null>(null);
   const [playersMap, setPlayersMap] = useState<Record<string, string>>({});
+  const [teamsMap, setTeamsMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,13 +31,19 @@ export default function ScorecardPage() {
     if (!id) return;
     Promise.all([
       fetch(`/api/matches/${id}`).then((r) => r.json()),
-      fetch("/api/players").then((r) => r.json()),
-    ]).then(([m, players]: [Match, Player[]]) => {
+      fetch("/api/players?light=1").then((r) => r.json()),
+      fetch("/api/teams").then((r) => r.json()),
+    ]).then(([m, players, teams]: [Match, Player[], Team[]]) => {
       if (m._id) setMatch(m);
       if (Array.isArray(players)) {
         const map: Record<string, string> = {};
         players.forEach((p) => { map[p._id] = p.fullName; });
         setPlayersMap(map);
+      }
+      if (Array.isArray(teams)) {
+        const map: Record<string, string> = {};
+        teams.forEach((t) => { map[t._id] = t.teamName; });
+        setTeamsMap(map);
       }
       setLoading(false);
     });
@@ -45,9 +57,36 @@ export default function ScorecardPage() {
     );
   }
 
-  const rules: RulesConfig = match.rulesConfig ?? { oversPerInnings: 20, ballsPerOver: 6, wideRuns: 1, noBallRuns: 1, wideCountsAsBall: true, noBallCountsAsBall: true };
-  const teamAName = "Team A";
-  const teamBName = "Team B";
+  const rules: RulesConfig = match.rulesConfig ?? { oversPerInnings: 20, ballsPerOver: 6, wideRuns: 1, noBallRuns: 1, wideCountsAsBall: false, noBallCountsAsBall: false };
+  const teamAName = teamsMap[match.teamAId] ?? "Team A";
+  const teamBName = teamsMap[match.teamBId] ?? "Team B";
+  const getTeamName = (teamId: string) => (match.teamAId === teamId ? teamAName : teamBName);
+
+  /** Compute match result (who won or tie) for completed matches. */
+  function getMatchResult(): string | null {
+    if (!match || match.status !== "COMPLETED") return null;
+    const inns = match.innings ?? [];
+    if (inns.length < 2) return null;
+    const isSO = inns.length >= 4 && (inns[inns.length - 1]?.maxOvers === 1);
+    const first = isSO ? inns[inns.length - 2]! : inns[0]!;
+    const second = isSO ? inns[inns.length - 1]! : inns[1]!;
+    const bpo1 = first.ballsPerOver ?? rules.ballsPerOver;
+    const bpo2 = second.ballsPerOver ?? rules.ballsPerOver;
+    const r1 = computeInningsSummary(first.events ?? [], rules, bpo1).totalRuns;
+    const w1 = computeInningsSummary(first.events ?? [], rules, bpo1).wickets;
+    const r2 = computeInningsSummary(second.events ?? [], rules, bpo2).totalRuns;
+    const w2 = computeInningsSummary(second.events ?? [], rules, bpo2).wickets;
+    const team1Bat = first.battingTeamId;
+    const team2Bat = second.battingTeamId;
+    const team1Name = match.teamAId === team1Bat ? teamAName : teamBName;
+    const team2Name = match.teamAId === team2Bat ? teamAName : teamBName;
+    const maxWk = (match.playingXI_A?.length ?? 11) - 1;
+    if (r2 > r1) return `${team2Name} won by ${maxWk - w2} wicket${maxWk - w2 !== 1 ? "s" : ""}`;
+    if (r2 < r1) return `${team1Name} won by ${r1 - r2} run${r1 - r2 !== 1 ? "s" : ""}`;
+    return "Match tied";
+  }
+
+  const resultMessage = getMatchResult();
 
   return (
     <div className="min-h-screen bg-cricket-cream pb-8">
@@ -60,6 +99,12 @@ export default function ScorecardPage() {
       </header>
 
       <main className="p-4 max-w-lg mx-auto space-y-6">
+        {resultMessage && (
+          <div className="rounded-xl bg-cricket-green text-white p-4 text-center shadow-md">
+            <p className="text-xs font-medium uppercase tracking-wider opacity-90">Result</p>
+            <p className="text-xl font-bold mt-1">{resultMessage}</p>
+          </div>
+        )}
         <p className="text-gray-600 text-sm">
           {new Date(match.date).toLocaleDateString()} · {match.status}
         </p>
@@ -76,9 +121,12 @@ export default function ScorecardPage() {
 
           return (
             <div key={idx} className="bg-white rounded-xl shadow p-4">
-              <h2 className="font-bold text-cricket-green mb-2">
+              <h2 className="font-bold text-cricket-green mb-1">
                 Innings {idx + 1}{innings.maxOvers === 1 ? " (Super Over)" : ""}: {summary.totalRuns}/{summary.wickets} ({formatOvers(summary, bpo)} overs)
               </h2>
+              <p className="text-sm text-gray-700 font-medium mb-1">
+                Batting: {getTeamName(innings.battingTeamId)} · Bowling: {getTeamName(innings.bowlingTeamId)}
+              </p>
               <p className="text-sm text-gray-600 mb-3">Run rate: {summary.runRate}</p>
               {Object.keys(summary.extrasBreakdown).length > 0 && (
                 <p className="text-sm text-gray-600 mb-2">
@@ -86,7 +134,7 @@ export default function ScorecardPage() {
                 </p>
               )}
 
-              <h3 className="font-medium mt-3 mb-1">Batting</h3>
+              <h3 className="font-medium mt-3 mb-1">Batting – {getTeamName(innings.battingTeamId)}</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -117,7 +165,7 @@ export default function ScorecardPage() {
                 </table>
               </div>
 
-              <h3 className="font-medium mt-3 mb-1">Bowling</h3>
+              <h3 className="font-medium mt-3 mb-1">Bowling – {getTeamName(innings.bowlingTeamId)}</h3>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>

@@ -1,33 +1,118 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Player {
   _id: string;
   fullName: string;
   shortName?: string;
+  email?: string;
   isKeeper?: boolean;
+  stats?: {
+    matchesPlayed: number;
+    runs: number;
+    strikeRate: number | null;
+    wickets: number;
+  };
 }
+
+const addPlayerSchema = z.object({
+  fullName: z.string().min(1, "Name required"),
+  shortName: z.string().optional(),
+  email: z.union([z.string().email("Invalid email"), z.literal("")]).optional().transform((s) => (s === "" ? undefined : s)),
+  isKeeper: z.boolean().optional(),
+});
+type AddPlayerFormData = z.infer<typeof addPlayerSchema>;
+
+const PAGE_SIZE = 10;
 
 export default function PlayersPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [removeId, setRemoveId] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [addError, setAddError] = useState("");
 
-  useEffect(() => {
-    const q = search ? `?search=${encodeURIComponent(search)}` : "";
-    fetch(`/api/players${q}`)
+  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<AddPlayerFormData>({
+    resolver: zodResolver(addPlayerSchema),
+    defaultValues: { fullName: "", shortName: "", email: "", isKeeper: false },
+  });
+
+  const loadPlayers = useCallback(() => {
+    const params = new URLSearchParams();
+    params.set("withStats", "1");
+    if (search.trim()) params.set("search", search.trim());
+    return fetch(`/api/players?${params}`)
       .then((r) => r.json())
       .then((data) => {
-        if (Array.isArray(data)) setPlayers(data);
+        if (Array.isArray(data)) {
+          setPlayers(data);
+          setCurrentPage(1);
+        }
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [search]);
+
+  useEffect(() => {
+    setLoading(true);
+    loadPlayers();
+  }, [loadPlayers]);
+
+  async function removePlayer(id: string) {
+    setRemoving(true);
+    try {
+      const res = await fetch(`/api/players/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setPlayers((prev) => prev.filter((p) => p._id !== id));
+        setRemoveId(null);
+        setCurrentPage((p) => Math.max(1, Math.min(p, Math.ceil((players.length - 1) / PAGE_SIZE))));
+      }
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  async function onAddPlayer(data: AddPlayerFormData) {
+    setAddError("");
+    const res = await fetch("/api/players", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setAddError(j.error?.message ?? "Failed to create player");
+      return;
+    }
+    setShowAddDialog(false);
+    reset({ fullName: "", shortName: "", email: "", isKeeper: false });
+    loadPlayers();
+  }
+
+  const totalPages = Math.max(1, Math.ceil(players.length / PAGE_SIZE));
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const paginatedPlayers = players.slice(startIndex, startIndex + PAGE_SIZE);
 
   return (
     <div className="min-h-screen bg-cricket-cream">
@@ -36,20 +121,27 @@ export default function PlayersPage() {
           <Link href="/">←</Link>
         </Button>
         <h1 className="text-xl font-bold flex-1 text-center">Players</h1>
-        <Button size="sm" className="bg-white text-primary hover:bg-white/90" asChild>
-          <Link href="/players/new">Add</Link>
-        </Button>
+        <div className="w-10" />
       </header>
-      <main className="p-4 max-w-lg mx-auto">
-        <div className="relative mb-4">
-          <Input
-            type="search"
-            placeholder="Search players..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-11"
-          />
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">🔍</span>
+      <main className="p-4 max-w-3xl mx-auto">
+        <div className="flex gap-2 mb-4">
+          <div className="relative flex-1 min-w-0">
+            <Input
+              type="search"
+              placeholder="Search players..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 h-11 w-full"
+            />
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">🔍</span>
+          </div>
+          <Button
+            size="default"
+            className="h-11 shrink-0 bg-cricket-green text-white hover:bg-cricket-green/90 border border-cricket-green shadow-sm font-medium px-4"
+            onClick={() => setShowAddDialog(true)}
+          >
+            Add
+          </Button>
         </div>
         {loading ? (
           <div className="flex justify-center py-12">
@@ -59,26 +151,200 @@ export default function PlayersPage() {
           <Card>
             <CardContent className="p-8 text-center">
               <p className="text-muted-foreground mb-2">No players yet</p>
-              <Button variant="link" className="text-primary p-0 h-auto" asChild>
-                <Link href="/players/new">Add your first player →</Link>
+              <Button
+                variant="link"
+                className="text-primary p-0 h-auto"
+                onClick={() => setShowAddDialog(true)}
+              >
+                Add your first player →
               </Button>
             </CardContent>
           </Card>
         ) : (
-          <ul className="space-y-2">
-            {players.map((p) => (
-              <Card key={p._id} className="border-0 shadow-card">
-                <Link href={`/players/${p._id}`}>
-                  <CardContent className="flex justify-between items-center py-3.5 px-4">
-                    <span className="font-medium text-foreground truncate pr-2">{p.fullName}</span>
-                    <span className="text-muted-foreground text-sm shrink-0">{p.shortName ?? "—"}</span>
-                  </CardContent>
-                </Link>
-              </Card>
-            ))}
-          </ul>
+          <Card className="border-0 shadow-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="text-left py-3 px-4 font-semibold text-foreground">Full name</th>
+                    <th className="text-left py-3 px-4 font-semibold text-foreground">Short name</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">Matches</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">Runs</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">SR</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">Wickets</th>
+                    <th className="text-left py-3 px-4 font-semibold text-foreground hidden sm:table-cell">Email</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedPlayers.map((p) => {
+                    const stats = p.stats;
+                    return (
+                      <tr key={p._id} className="border-b border-border/80 hover:bg-muted/30 transition-colors">
+                        <td className="py-3 px-4">
+                          <Link href={`/players/${p._id}`} className="font-medium text-foreground hover:underline">
+                            {p.fullName}
+                          </Link>
+                        </td>
+                        <td className="py-3 px-4 text-muted-foreground">{p.shortName ?? "—"}</td>
+                        <td className="py-3 px-4 text-right tabular-nums">{stats ? stats.matchesPlayed : "—"}</td>
+                        <td className="py-3 px-4 text-right tabular-nums">{stats ? stats.runs : "—"}</td>
+                        <td className="py-3 px-4 text-right tabular-nums">{stats?.strikeRate != null ? stats.strikeRate : "—"}</td>
+                        <td className="py-3 px-4 text-right tabular-nums">{stats ? stats.wickets : "—"}</td>
+                        <td className="py-3 px-4 text-muted-foreground hidden sm:table-cell truncate max-w-[180px]">{p.email ?? "—"}</td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button variant="ghost" size="sm" className="h-8 text-muted-foreground" asChild>
+                              <Link href={`/players/${p._id}/edit`}>Edit</Link>
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-destructive hover:text-destructive"
+                              onClick={() => setRemoveId(p._id)}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/30 px-4 py-3">
+                <p className="text-sm text-muted-foreground">
+                  Showing {startIndex + 1}–{startIndex + paginatedPlayers.length} of {players.length}
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                  >
+                    Previous
+                  </Button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      size="sm"
+                      className="min-w-[2rem]"
+                      onClick={() => setCurrentPage(page)}
+                    >
+                      {page}
+                    </Button>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
         )}
       </main>
+
+      <Dialog open={!!removeId} onOpenChange={(open) => !open && setRemoveId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove player</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove this player? This cannot be undone. They will be removed from any teams.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveId(null)} disabled={removing}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => removeId && removePlayer(removeId)}
+              disabled={removing}
+            >
+              {removing ? "Removing…" : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAddDialog} onOpenChange={(open) => { setShowAddDialog(open); if (!open) setAddError(""); reset({ fullName: "", shortName: "", email: "", isKeeper: false }); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add player</DialogTitle>
+            <DialogDescription>Add a new player to your squad.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit(onAddPlayer)} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="add-fullName">Full name *</Label>
+              <Input
+                id="add-fullName"
+                {...register("fullName")}
+                placeholder="e.g. John Smith"
+                className="h-11"
+              />
+              {errors.fullName && (
+                <p className="text-sm text-destructive">{errors.fullName.message}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-shortName">Short name</Label>
+              <Input
+                id="add-shortName"
+                {...register("shortName")}
+                placeholder="e.g. J. Smith"
+                className="h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-email">Email (optional)</Label>
+              <Input
+                id="add-email"
+                type="email"
+                {...register("email")}
+                placeholder="e.g. john@example.com"
+                className="h-11"
+              />
+              {errors.email && (
+                <p className="text-sm text-destructive">{errors.email.message}</p>
+              )}
+            </div>
+            <Controller
+              name="isKeeper"
+              control={control}
+              render={({ field }) => (
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="add-keeper"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                  <Label htmlFor="add-keeper" className="cursor-pointer font-normal">Wicket keeper</Label>
+                </div>
+              )}
+            />
+            {addError && (
+              <p className="text-sm text-destructive bg-destructive/10 py-2 px-3 rounded-md">{addError}</p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-cricket-green text-white hover:bg-cricket-green/90">
+                Create Player
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

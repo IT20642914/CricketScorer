@@ -1,10 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import type { Team } from "@/lib/types";
 import { DEFAULT_RULES } from "@/lib/types";
+import { computeInningsSummary } from "@/lib/engine";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -27,12 +40,15 @@ interface Player {
   fullName: string;
 }
 
-export default function NewMatchPage() {
+function NewMatchContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rematchId = searchParams.get("rematch");
   const [teams, setTeams] = useState<Team[]>([]);
   const [playersMap, setPlayersMap] = useState<Record<string, string>>({});
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
+  const [rematchLoaded, setRematchLoaded] = useState(false);
   const [error, setError] = useState("");
   const [state, setState] = useState<WizardState>({
     teamAId: "",
@@ -50,7 +66,7 @@ export default function NewMatchPage() {
 
   useEffect(() => {
     fetch("/api/teams").then((r) => r.json()).then((d) => Array.isArray(d) && setTeams(d));
-    fetch("/api/players").then((r) => r.json()).then((d) => {
+    fetch("/api/players?light=1").then((r) => r.json()).then((d) => {
       if (Array.isArray(d)) {
         const map: Record<string, string> = {};
         (d as Player[]).forEach((p) => { map[p._id] = p.fullName; });
@@ -58,6 +74,49 @@ export default function NewMatchPage() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (!rematchId || rematchLoaded || teams.length === 0) return;
+    fetch(`/api/matches/${rematchId}`)
+      .then((r) => r.json())
+      .then((m) => {
+        if (!m._id) return;
+        const rules = m.rulesConfig ? { ...DEFAULT_RULES, ...m.rulesConfig } : { ...DEFAULT_RULES };
+        const inn0 = m.innings?.[0];
+        const inn1 = m.innings?.[1];
+        let tossWinnerTeamId = "";
+        let tossDecision: "BAT" | "FIELD" | "" = "";
+        if (inn0 && inn1) {
+          const bpo0 = inn0.ballsPerOver ?? rules.ballsPerOver;
+          const bpo1 = inn1.ballsPerOver ?? rules.ballsPerOver;
+          const sum0 = computeInningsSummary(inn0.events ?? [], rules, bpo0);
+          const sum1 = computeInningsSummary(inn1.events ?? [], rules, bpo1);
+          if (sum1.totalRuns > sum0.totalRuns) {
+            tossWinnerTeamId = inn1.battingTeamId;
+            tossDecision = "BAT";
+          } else if (sum0.totalRuns > sum1.totalRuns) {
+            tossWinnerTeamId = inn0.battingTeamId;
+            tossDecision = "BAT";
+          }
+        }
+        setState({
+          teamAId: m.teamAId ?? "",
+          teamBId: m.teamBId ?? "",
+          teamA: teams.find((x) => x._id === m.teamAId) ?? null,
+          teamB: teams.find((x) => x._id === m.teamBId) ?? null,
+          playingXI_A: Array.isArray(m.playingXI_A) ? m.playingXI_A : [],
+          playingXI_B: Array.isArray(m.playingXI_B) ? m.playingXI_B : [],
+          rules,
+          tossWinnerTeamId,
+          tossDecision,
+          matchName: (m.matchName ?? "Match") + " (rematch)",
+          date: new Date().toISOString().slice(0, 10),
+        });
+        setStep(4);
+        setRematchLoaded(true);
+      })
+      .catch(() => setRematchLoaded(true));
+  }, [rematchId, rematchLoaded, teams]);
 
   useEffect(() => {
     const t = teams.find((x) => x._id === state.teamAId);
@@ -131,241 +190,328 @@ export default function NewMatchPage() {
 
   return (
     <div className="min-h-screen bg-cricket-cream">
-      <header className="bg-cricket-green text-white px-4 py-4 flex items-center gap-2">
-        <Link href="/" className="text-white">←</Link>
-        <h1 className="text-xl font-bold">New Match — Step {step}/5</h1>
+      <header className="page-header">
+        <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 -ml-2" asChild>
+          <Link href="/matches">←</Link>
+        </Button>
+        <h1 className="text-xl font-bold flex-1 text-center">New Match — Step {step}/5</h1>
+        <div className="w-10" />
       </header>
       <main className="p-4 max-w-lg mx-auto space-y-4">
+        <Card>
+          <CardContent className="p-5 pt-6 space-y-4">
         {step === 1 && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Match name</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="matchName">Match name</Label>
+              <Input
+                id="matchName"
                 value={state.matchName}
                 onChange={(e) => setState((s) => ({ ...s, matchName: e.target.value }))}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300"
                 placeholder="e.g. Finals"
+                className="h-11"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
                 type="date"
                 value={state.date}
                 onChange={(e) => setState((s) => ({ ...s, date: e.target.value }))}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300"
+                className="h-11"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Team A</label>
-              <select
-                value={state.teamAId}
-                onChange={(e) => setState((s) => ({ ...s, teamAId: e.target.value }))}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300"
-              >
-                <option value="">Select team</option>
-                {teams.map((t) => (
-                  <option key={t._id} value={t._id}>{t.teamName}</option>
-                ))}
-              </select>
+            <div className="space-y-2">
+              <Label>Team A</Label>
+              <Select value={state.teamAId || "_"} onValueChange={(v) => setState((s) => ({ ...s, teamAId: v === "_" ? "" : v }))}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Select team" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">Select team</SelectItem>
+                  {teams.map((t) => (
+                    <SelectItem key={t._id} value={t._id}>{t.teamName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Team B</label>
-              <select
-                value={state.teamBId}
-                onChange={(e) => setState((s) => ({ ...s, teamBId: e.target.value }))}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300"
-              >
-                <option value="">Select team</option>
-                {teams.map((t) => (
-                  <option key={t._id} value={t._id}>{t.teamName}</option>
-                ))}
-              </select>
+            <div className="space-y-2">
+              <Label>Team B</Label>
+              <Select value={state.teamBId || "_"} onValueChange={(v) => setState((s) => ({ ...s, teamBId: v === "_" ? "" : v }))}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Select team" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_">Select team</SelectItem>
+                  {teams.map((t) => (
+                    <SelectItem key={t._id} value={t._id}>{t.teamName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </>
         )}
 
         {step === 2 && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Playing XI — {teamA?.teamName}</label>
-              <ul className="space-y-1 max-h-48 overflow-y-auto">
+            <div className="space-y-2">
+              <Label>Playing XI — {teamA?.teamName}</Label>
+              <ul className="space-y-1.5 max-h-48 overflow-y-auto rounded-md border border-input bg-muted/30 p-2">
                 {(teamA?.playerIds ?? []).map((pid) => (
                   <li key={pid}>
-                    <label className="flex items-center gap-2 py-2 px-3 bg-white rounded border cursor-pointer">
-                      <input
-                        type="checkbox"
+                    <label className="flex items-center gap-3 py-2.5 px-3 rounded-md hover:bg-background cursor-pointer">
+                      <Checkbox
                         checked={state.playingXI_A.includes(pid)}
-                        onChange={() => togglePlayingXI("A", pid)}
+                        onCheckedChange={() => togglePlayingXI("A", pid)}
                         disabled={!state.playingXI_A.includes(pid) && state.playingXI_A.length >= 11}
                       />
-                      <span>{playersMap[pid] ?? pid}</span>
+                      <span className="text-sm font-medium">{playersMap[pid] ?? pid}</span>
                     </label>
                   </li>
                 ))}
               </ul>
-              <p className="text-xs text-gray-500 mt-1">{state.playingXI_A.length} selected</p>
+              <p className="text-xs text-muted-foreground">{state.playingXI_A.length} selected</p>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Playing XI — {teamB?.teamName}</label>
-              <ul className="space-y-1 max-h-48 overflow-y-auto">
+            <div className="space-y-2">
+              <Label>Playing XI — {teamB?.teamName}</Label>
+              <ul className="space-y-1.5 max-h-48 overflow-y-auto rounded-md border border-input bg-muted/30 p-2">
                 {(teamB?.playerIds ?? []).map((pid) => (
                   <li key={pid}>
-                    <label className="flex items-center gap-2 py-2 px-3 bg-white rounded border cursor-pointer">
-                      <input
-                        type="checkbox"
+                    <label className="flex items-center gap-3 py-2.5 px-3 rounded-md hover:bg-background cursor-pointer">
+                      <Checkbox
                         checked={state.playingXI_B.includes(pid)}
-                        onChange={() => togglePlayingXI("B", pid)}
+                        onCheckedChange={() => togglePlayingXI("B", pid)}
                         disabled={!state.playingXI_B.includes(pid) && state.playingXI_B.length >= 11}
                       />
-                      <span>{playersMap[pid] ?? pid}</span>
+                      <span className="text-sm font-medium">{playersMap[pid] ?? pid}</span>
                     </label>
                   </li>
                 ))}
               </ul>
-              <p className="text-xs text-gray-500 mt-1">{state.playingXI_B.length} selected</p>
+              <p className="text-xs text-muted-foreground">{state.playingXI_B.length} selected</p>
             </div>
           </>
         )}
 
         {step === 3 && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Overs per innings</label>
-              <input
-                type="number"
-                min={1}
-                value={state.rules.oversPerInnings}
-                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, oversPerInnings: +e.target.value || 20 } }))}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Balls per over</label>
-              <select
-                value={state.rules.ballsPerOver}
-                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, ballsPerOver: +e.target.value } }))}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300"
-              >
-                {[4, 5, 6, 8].map((n) => (
-                  <option key={n} value={n}>{n}</option>
+            <div className="space-y-2">
+              <Label>Overs per innings</Label>
+              <div className="flex flex-wrap gap-2">
+                {([5, 10, 20] as const).map((n) => (
+                  <Button
+                    key={n}
+                    type="button"
+                    variant={state.rules.oversPerInnings === n ? "default" : "outline"}
+                    size="sm"
+                    className="h-9 rounded-xl"
+                    onClick={() => setState((s) => ({ ...s, rules: { ...s.rules, oversPerInnings: n } }))}
+                  >
+                    {n}
+                  </Button>
                 ))}
-              </select>
+                <Button
+                  type="button"
+                  variant={[5, 10, 20].includes(state.rules.oversPerInnings) ? "outline" : "default"}
+                  size="sm"
+                  className="h-9 rounded-xl"
+                  onClick={() => setState((s) => ({
+                    ...s,
+                    rules: {
+                      ...s.rules,
+                      oversPerInnings: [5, 10, 20].includes(s.rules.oversPerInnings) ? 15 : s.rules.oversPerInnings,
+                    },
+                  }))}
+                >
+                  Custom
+                </Button>
+              </div>
+              {![5, 10, 20].includes(state.rules.oversPerInnings) && (
+                <Input
+                  type="number"
+                  min={1}
+                  value={state.rules.oversPerInnings}
+                  onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, oversPerInnings: Math.max(1, +e.target.value || 1) } }))}
+                  className="h-9 w-24 rounded-xl"
+                  placeholder="Enter"
+                />
+              )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Wide runs</label>
-              <input
+            <div className="space-y-2">
+              <Label>Balls per over</Label>
+              <div className="flex flex-wrap gap-2">
+                {([4, 5, 6, 8] as const).map((n) => (
+                  <Button
+                    key={n}
+                    type="button"
+                    variant={state.rules.ballsPerOver === n ? "default" : "outline"}
+                    size="sm"
+                    className="h-9 rounded-xl"
+                    onClick={() => setState((s) => ({ ...s, rules: { ...s.rules, ballsPerOver: n } }))}
+                  >
+                    {n}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wideRuns">Wide runs (default 1)</Label>
+              <Input
+                id="wideRuns"
                 type="number"
                 min={0}
                 value={state.rules.wideRuns}
-                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, wideRuns: +e.target.value || 0 } }))}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300"
+                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, wideRuns: +e.target.value || 1 } }))}
+                className="h-11"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">No-ball runs</label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="noBallRuns">No-ball runs (default 1)</Label>
+              <Input
+                id="noBallRuns"
                 type="number"
                 min={0}
                 value={state.rules.noBallRuns}
-                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, noBallRuns: +e.target.value || 0 } }))}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300"
+                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, noBallRuns: +e.target.value || 1 } }))}
+                className="h-11"
               />
             </div>
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="wideCounts"
                 checked={state.rules.wideCountsAsBall}
-                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, wideCountsAsBall: e.target.checked } }))}
+                onCheckedChange={(checked) => setState((s) => ({ ...s, rules: { ...s.rules, wideCountsAsBall: !!checked } }))}
               />
-              <label htmlFor="wideCounts">Wide counts as ball</label>
+              <Label htmlFor="wideCounts" className="cursor-pointer font-normal text-sm">Wide counts as ball</Label>
             </div>
             <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 id="nbCounts"
                 checked={state.rules.noBallCountsAsBall}
-                onChange={(e) => setState((s) => ({ ...s, rules: { ...s.rules, noBallCountsAsBall: e.target.checked } }))}
+                onCheckedChange={(checked) => setState((s) => ({ ...s, rules: { ...s.rules, noBallCountsAsBall: !!checked } }))}
               />
-              <label htmlFor="nbCounts">No-ball counts as ball</label>
+              <Label htmlFor="nbCounts" className="cursor-pointer font-normal text-sm">No-ball counts as ball</Label>
             </div>
           </>
         )}
 
         {step === 4 && (
           <>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Toss winner</label>
-              <select
-                value={state.tossWinnerTeamId}
-                onChange={(e) => setState((s) => ({ ...s, tossWinnerTeamId: e.target.value }))}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300"
-              >
-                <option value="">Select</option>
-                {teamA && <option value={state.teamAId}>{teamA.teamName}</option>}
-                {teamB && <option value={state.teamBId}>{teamB.teamName}</option>}
-              </select>
+            <div className="space-y-2">
+              <Label>Toss winner</Label>
+              <div className="flex flex-wrap gap-2">
+                {teamA && (
+                  <Button
+                    type="button"
+                    variant={state.tossWinnerTeamId === state.teamAId ? "default" : "outline"}
+                    size="sm"
+                    className="h-10 rounded-xl flex-1 min-w-0"
+                    onClick={() => setState((s) => ({ ...s, tossWinnerTeamId: state.teamAId }))}
+                  >
+                    {teamA.teamName}
+                  </Button>
+                )}
+                {teamB && (
+                  <Button
+                    type="button"
+                    variant={state.tossWinnerTeamId === state.teamBId ? "default" : "outline"}
+                    size="sm"
+                    className="h-10 rounded-xl flex-1 min-w-0"
+                    onClick={() => setState((s) => ({ ...s, tossWinnerTeamId: state.teamBId }))}
+                  >
+                    {teamB.teamName}
+                  </Button>
+                )}
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Decision</label>
-              <select
-                value={state.tossDecision}
-                onChange={(e) => setState((s) => ({ ...s, tossDecision: e.target.value as "BAT" | "FIELD" }))}
-                className="w-full px-4 py-3 rounded-lg border border-gray-300"
-              >
-                <option value="">Select</option>
-                <option value="BAT">Bat</option>
-                <option value="FIELD">Field</option>
-              </select>
+            <div className="space-y-2">
+              <Label>Decision</Label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant={state.tossDecision === "BAT" ? "default" : "outline"}
+                  size="sm"
+                  className="h-10 rounded-xl flex-1"
+                  onClick={() => setState((s) => ({ ...s, tossDecision: "BAT" as const }))}
+                >
+                  Bat
+                </Button>
+                <Button
+                  type="button"
+                  variant={state.tossDecision === "FIELD" ? "default" : "outline"}
+                  size="sm"
+                  className="h-10 rounded-xl flex-1"
+                  onClick={() => setState((s) => ({ ...s, tossDecision: "FIELD" as const }))}
+                >
+                  Field
+                </Button>
+              </div>
             </div>
           </>
         )}
 
         {step === 5 && (
-          <div className="space-y-2">
-            <p className="font-medium">Summary</p>
-            <p>{state.matchName || "Match"} — {state.date}</p>
-            <p>{teamA?.teamName} vs {teamB?.teamName}</p>
-            <p>{state.rules.oversPerInnings} overs, {state.rules.ballsPerOver} balls/over</p>
-            <p>Toss: {state.tossWinnerTeamId === state.teamAId ? teamA?.teamName : teamB?.teamName} chose to {state.tossDecision === "BAT" ? "bat" : "field"}</p>
-            <p className="text-sm text-gray-600">Batting first: {state.tossDecision === "BAT" ? (state.tossWinnerTeamId === state.teamAId ? teamA?.teamName : teamB?.teamName) : (state.tossWinnerTeamId === state.teamAId ? teamB?.teamName : teamA?.teamName)}</p>
+          <div className="space-y-3">
+            <p className="font-semibold text-foreground">Summary</p>
+            <p className="text-sm text-muted-foreground">{state.matchName || "Match"} — {state.date}</p>
+            <p className="text-sm">{teamA?.teamName} vs {teamB?.teamName}</p>
+            <p className="text-sm">{state.rules.oversPerInnings} overs, {state.rules.ballsPerOver} balls/over</p>
+            <p className="text-sm">Toss: {state.tossWinnerTeamId === state.teamAId ? teamA?.teamName : teamB?.teamName} chose to {state.tossDecision === "BAT" ? "bat" : "field"}</p>
+            <p className="text-xs text-muted-foreground">Batting first: {state.tossDecision === "BAT" ? (state.tossWinnerTeamId === state.teamAId ? teamA?.teamName : teamB?.teamName) : (state.tossWinnerTeamId === state.teamAId ? teamB?.teamName : teamA?.teamName)}</p>
           </div>
         )}
 
-        {error && <p className="text-red-600 text-sm">{error}</p>}
+        {error && (
+          <p className="text-sm text-destructive bg-destructive/10 py-2 px-3 rounded-md">{error}</p>
+        )}
 
-        <div className="flex gap-2 pt-4">
+        <div className="flex gap-2 pt-2">
           {step > 1 && (
-            <button
+            <Button
               type="button"
+              variant="outline"
+              className="flex-1 h-11 rounded-xl"
               onClick={() => setStep((s) => (s - 1) as Step)}
-              className="flex-1 py-3 rounded-lg border border-gray-300 font-medium"
             >
               Back
-            </button>
+            </Button>
           )}
           {step < 5 ? (
-            <button
+            <Button
               type="button"
+              className="flex-1 h-11 rounded-xl"
               onClick={() => canNext && setStep((s) => (s + 1) as Step)}
               disabled={!canNext}
-              className="flex-1 py-3 rounded-lg bg-cricket-green text-white font-semibold disabled:opacity-50"
             >
               Next
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
+              className="flex-1 h-11 rounded-xl"
               onClick={createAndStart}
               disabled={loading}
-              className="flex-1 py-3 rounded-lg bg-cricket-green text-white font-semibold disabled:opacity-50"
             >
               {loading ? "Starting…" : "Start Match"}
-            </button>
+            </Button>
           )}
         </div>
+          </CardContent>
+        </Card>
       </main>
     </div>
+  );
+}
+
+export default function NewMatchPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
+        <span className="text-muted-foreground">Loading...</span>
+      </div>
+    }>
+      <NewMatchContent />
+    </Suspense>
   );
 }

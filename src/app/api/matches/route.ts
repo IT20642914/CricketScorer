@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const status = url.searchParams.get("status");
     const query = status ? { status } : {};
-    const matches = await MatchModel.find(query).sort({ date: -1 }).lean();
+    const matches = await MatchModel.find(query).sort({ date: -1, updatedAt: -1 }).lean();
     return NextResponse.json(matches);
   } catch (e) {
     console.error(e);
