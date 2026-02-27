@@ -1,7 +1,11 @@
 /** Central query keys for TanStack Query. Use when invalidating after mutations. */
 export const queryKeys = {
-  matches: (filter?: string, userId?: string, playerId?: string, page?: number) =>
-    ["matches", filter, userId ?? "", playerId ?? "", page ?? 1] as const,
+  matches: (
+    filter?: string,
+    userId?: string,
+    playerId?: string,
+    page?: number,
+  ) => ["matches", filter, userId ?? "", playerId ?? "", page ?? 1] as const,
   match: (id: string) => ["match", id] as const,
   teams: () => ["teams"] as const,
   /** Teams page: list + stats per team. Keep separate from teams() so cache shape matches. */
