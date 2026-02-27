@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { PlayerModel, TeamModel } from "@/lib/models";
 
+export const dynamic = "force-dynamic";
+
 /** Optional: seed demo data. GET /api/seed */
 export async function GET() {
   try {
