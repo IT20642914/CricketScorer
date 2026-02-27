@@ -20,7 +20,7 @@ export async function GET() {
       contentType = "image/png";
     }
 
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": contentType,
         "Cache-Control": "public, max-age=86400",

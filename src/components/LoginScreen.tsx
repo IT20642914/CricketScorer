@@ -29,6 +29,7 @@ export function LoginScreen({ error, callbackUrl = "/" }: LoginScreenProps) {
   return (
     <div className="relative flex items-center justify-center min-h-screen w-full p-4 safe-area-pb overflow-hidden bg-gray-800">
       {bgSrc && (
+        // eslint-disable-next-line @next/next/no-img-element -- background from /api/bg; Next/Image had load issues with dynamic full-screen bg
         <img
           src={bgSrc}
           alt=""
@@ -43,6 +44,7 @@ export function LoginScreen({ error, callbackUrl = "/" }: LoginScreenProps) {
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8">
           {!logoHidden && (
             <div className="flex justify-center mb-6 min-h-[70px]">
+              {/* eslint-disable-next-line @next/next/no-img-element -- dynamic src with fallback to logo.jpeg */}
               <img
                 src={logoSrc}
                 alt="Cricket Scorer logo"
