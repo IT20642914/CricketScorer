@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { SessionProvider } from "@/components/SessionProvider";
 
 export const metadata: Metadata = {
   title: "Cricket Scoring",
@@ -13,7 +14,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen">{children}</body>
+      <body className="min-h-screen">
+        <SessionProvider>{children}</SessionProvider>
+      </body>
     </html>
   );
 }

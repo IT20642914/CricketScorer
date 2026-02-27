@@ -5,6 +5,9 @@ import dns from "node:dns";
 dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
 console.log("[MongoDB] DNS Servers set to:", dns.getServers());
 
+// Set DNS resolution to use system resolver (fixes Bun DNS SRV issue on Windows)
+dns.setDefaultResultOrder('ipv4first');
+
 const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
 
 interface MongooseCache {
@@ -26,7 +29,13 @@ export async function connectDB(): Promise<typeof mongoose> {
     console.log("Attempting to connect to MongoDB...");
     if (cached.conn) return cached.conn;
     if (!cached.promise) {
-      cached.promise = mongoose.connect(MONGODB_URI);
+      cached.promise = mongoose.connect(MONGODB_URI, {
+        // Increase timeout for DNS resolution
+        serverSelectionTimeoutMS: 10000,
+        socketTimeoutMS: 45000,
+        // Use IPv4 for DNS resolution (Windows fix)
+        family: 4,
+      });
     }
     cached.conn = await cached.promise;
     console.log("Connected to MongoDB successfully");
