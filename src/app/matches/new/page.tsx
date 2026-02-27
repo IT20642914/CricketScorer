@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
+import { Spinner } from "@/components/ui/spinner";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -135,6 +136,9 @@ function NewMatchContent() {
             tossDecision = "BAT";
           }
         }
+        const currentName = m.matchName ?? "Match";
+        const rematchNum = /^match-(\d+)$/i.exec(currentName);
+        const nextMatchName = rematchNum ? `match-${Number(rematchNum[1]) + 1}` : `${currentName} (rematch)`;
         setState({
           teamAId: m.teamAId ?? "",
           teamBId: m.teamBId ?? "",
@@ -145,7 +149,7 @@ function NewMatchContent() {
           rules,
           tossWinnerTeamId,
           tossDecision,
-          matchName: (m.matchName ?? "Match") + " (rematch)",
+          matchName: nextMatchName,
           date: new Date().toISOString().slice(0, 10),
         });
         setStep(4);
@@ -551,8 +555,9 @@ function NewMatchContent() {
 export default function NewMatchPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
-        <span className="text-muted-foreground">Loading...</span>
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center gap-2">
+        <Spinner className="h-5 w-5 border-cricket-green border-t-transparent text-cricket-green" />
+        <span className="text-muted-foreground">Loading…</span>
       </div>
     }>
       <NewMatchContent />

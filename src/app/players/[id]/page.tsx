@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import {
   BarChart,
   Bar,
@@ -82,8 +83,9 @@ export default function PlayerStatsPage() {
 
   if (loading || !player) {
     return (
-      <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
-        <span className="text-muted-foreground">Loading...</span>
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center gap-2">
+        <Spinner className="h-5 w-5 border-cricket-green border-t-transparent text-cricket-green" />
+        <span className="text-muted-foreground">Loading…</span>
       </div>
     );
   }

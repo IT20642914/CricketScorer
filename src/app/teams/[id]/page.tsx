@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Label } from "@/components/ui/label";
 
 interface Player {
@@ -96,8 +97,9 @@ export default function EditTeamPage() {
 
   if (loading || !team) {
     return (
-      <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
-        <span className="text-muted-foreground">Loading...</span>
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center gap-2">
+        <Spinner className="h-5 w-5 border-cricket-green border-t-transparent text-cricket-green" />
+        <span className="text-muted-foreground">Loading…</span>
       </div>
     );
   }

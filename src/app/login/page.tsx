@@ -2,6 +2,7 @@
 
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, Suspense } from "react";
 import { useSession } from "next-auth/react";
@@ -67,8 +68,9 @@ function LoginContent() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-600 to-blue-800">
-        <p className="text-white">Loading...</p>
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 gap-2">
+        <Spinner className="h-5 w-5 border-white border-t-transparent text-white" />
+        <p className="text-white">Loading…</p>
       </div>
     }>
       <LoginContent />

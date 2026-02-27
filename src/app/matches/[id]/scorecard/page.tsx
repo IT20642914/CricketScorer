@@ -9,6 +9,7 @@ import {
   formatOvers,
 } from "@/lib/engine";
 import type { Match, BallEvent, RulesConfig } from "@/lib/types";
+import { Spinner } from "@/components/ui/spinner";
 
 interface Player {
   _id: string;
@@ -51,8 +52,9 @@ export default function ScorecardPage() {
 
   if (loading || !match) {
     return (
-      <div className="min-h-screen bg-cricket-cream p-4">
-        <p>Loading...</p>
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center gap-2">
+        <Spinner className="h-5 w-5 border-cricket-green border-t-transparent text-cricket-green" />
+        <p className="text-muted-foreground">Loading…</p>
       </div>
     );
   }

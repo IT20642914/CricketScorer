@@ -19,6 +19,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { queryKeys } from "@/lib/query-keys";
+import { TableSkeleton } from "@/components/loaders/table-skeleton";
+import { Spinner } from "@/components/ui/spinner";
 
 interface Team {
   _id: string;
@@ -69,14 +71,17 @@ async function fetchTeamsWithStats(): Promise<{ teams: Team[]; statsMap: Record<
 export default function TeamsPage() {
   const queryClient = useQueryClient();
   const teamsQuery = useQuery({
-    queryKey: queryKeys.teams(),
+    queryKey: queryKeys.teamsWithStats(),
     queryFn: fetchTeamsWithStats,
   });
   const teams = teamsQuery.data?.teams ?? [];
   const statsMap = teamsQuery.data?.statsMap ?? {};
-  const loading = teamsQuery.isLoading;
-  const statsLoading = teamsQuery.isLoading;
+  const isLoading = teamsQuery.isLoading;
   const isRefetching = teamsQuery.isRefetching;
+  const isError = teamsQuery.isError;
+  /** Show skeleton on initial load and when user clicks Refresh (so loading is always visible). */
+  const showLoadingTable = isLoading || isRefetching;
+  const statsLoading = isLoading;
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [addError, setAddError] = useState("");
@@ -143,6 +148,7 @@ export default function TeamsPage() {
     setPlayerSearch("");
     setPlayerDropdownOpen(false);
     queryClient.invalidateQueries({ queryKey: queryKeys.teams() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.teamsWithStats() });
   }
 
   function handleCloseAddDialog(open: boolean) {
@@ -183,28 +189,23 @@ export default function TeamsPage() {
             Create
           </Button>
         </div>
-        {loading ? (
-          <Card className="border-0 shadow-card overflow-hidden rounded-2xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/50">
-                    <th className="text-left py-3 px-4 font-semibold text-foreground">Team</th>
-                    <th className="text-right py-3 px-4 font-semibold text-foreground">Players</th>
-                    <th className="text-right py-3 px-4 font-semibold text-foreground">Matches</th>
-                    <th className="text-right py-3 px-4 font-semibold text-foreground">Wins</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-border/80">
-                    <td className="py-3 px-4 text-muted-foreground">Loading…</td>
-                    <td className="py-3 px-4 text-right text-muted-foreground">Loading…</td>
-                    <td className="py-3 px-4 text-right text-muted-foreground">Loading…</td>
-                    <td className="py-3 px-4 text-right text-muted-foreground">Loading…</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+        {showLoadingTable ? (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-gray-700 flex items-center gap-2" aria-live="polite">
+              <Spinner className="h-4 w-4 shrink-0 border-cricket-green border-t-transparent text-cricket-green" />
+              {isRefetching ? "Refreshing teams…" : "Loading teams…"}
+            </p>
+            <TableSkeleton columns={["left", "right", "right", "right"]} rows={5} />
+          </div>
+        ) : isError ? (
+          <Card className="rounded-2xl border-destructive/30 bg-destructive/5">
+            <CardContent className="p-6 text-center">
+              <p className="text-destructive font-medium mb-2">Failed to load teams</p>
+              <p className="text-sm text-muted-foreground mb-4">Check your connection and try again.</p>
+              <Button variant="outline" size="sm" className="rounded-xl" onClick={() => teamsQuery.refetch()} disabled={isRefetching}>
+                {isRefetching ? "Retrying…" : "Retry"}
+              </Button>
+            </CardContent>
           </Card>
         ) : teams.length === 0 ? (
           <Card className="rounded-2xl">

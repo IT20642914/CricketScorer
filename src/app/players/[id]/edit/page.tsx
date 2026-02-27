@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Spinner } from "@/components/ui/spinner";
 
 const schema = z.object({
   fullName: z.string().min(1),
@@ -65,8 +66,9 @@ export default function EditPlayerPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
-        <span className="text-muted-foreground">Loading...</span>
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center gap-2">
+        <Spinner className="h-5 w-5 border-cricket-green border-t-transparent text-cricket-green" />
+        <span className="text-muted-foreground">Loading…</span>
       </div>
     );
   }

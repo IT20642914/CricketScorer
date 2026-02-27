@@ -20,6 +20,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { queryKeys } from "@/lib/query-keys";
+import { TableSkeleton } from "@/components/loaders/table-skeleton";
+import { Spinner } from "@/components/ui/spinner";
 
 interface Player {
   _id: string;
@@ -68,8 +70,11 @@ export default function PlayersPage() {
     queryFn: () => fetchPlayers(search),
   });
   const players = playersQuery.data ?? [];
-  const loading = playersQuery.isLoading;
+  const isLoading = playersQuery.isLoading;
   const isRefetching = playersQuery.isRefetching;
+  const isError = playersQuery.isError;
+  /** Show skeleton on initial load and when user clicks Refresh (same as Teams). */
+  const showLoadingTable = isLoading || isRefetching;
 
   useEffect(() => {
     setCurrentPage(1);
@@ -155,36 +160,26 @@ export default function PlayersPage() {
             </Button>
           </div>
         </div>
-        {loading ? (
-          <Card className="border-0 shadow-card overflow-hidden rounded-2xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/50">
-                    <th className="text-left py-3 px-4 font-semibold text-foreground">Full name</th>
-                    <th className="text-left py-3 px-4 font-semibold text-foreground">Short name</th>
-                    <th className="text-right py-3 px-4 font-semibold text-foreground">Matches</th>
-                    <th className="text-right py-3 px-4 font-semibold text-foreground">Runs</th>
-                    <th className="text-right py-3 px-4 font-semibold text-foreground">SR</th>
-                    <th className="text-right py-3 px-4 font-semibold text-foreground">Wickets</th>
-                    <th className="text-left py-3 px-4 font-semibold text-foreground hidden sm:table-cell">Email</th>
-                    <th className="text-right py-3 px-4 font-semibold text-foreground">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-border/80">
-                    <td className="py-3 px-4 text-muted-foreground">Loading…</td>
-                    <td className="py-3 px-4 text-muted-foreground">Loading…</td>
-                    <td className="py-3 px-4 text-right text-muted-foreground">Loading…</td>
-                    <td className="py-3 px-4 text-right text-muted-foreground">Loading…</td>
-                    <td className="py-3 px-4 text-right text-muted-foreground">Loading…</td>
-                    <td className="py-3 px-4 text-right text-muted-foreground">Loading…</td>
-                    <td className="py-3 px-4 text-muted-foreground hidden sm:table-cell">Loading…</td>
-                    <td className="py-3 px-4 text-right text-muted-foreground">—</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+        {showLoadingTable ? (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-gray-700 flex items-center gap-2" aria-live="polite">
+              <Spinner className="h-4 w-4 shrink-0 border-cricket-green border-t-transparent text-cricket-green" />
+              {isRefetching ? "Refreshing players…" : "Loading players…"}
+            </p>
+            <TableSkeleton
+              columns={["left", "left", "right", "right", "right", "right", "right"]}
+              rows={5}
+            />
+          </div>
+        ) : isError ? (
+          <Card className="rounded-2xl border-destructive/30 bg-destructive/5">
+            <CardContent className="p-6 text-center">
+              <p className="text-destructive font-medium mb-2">Failed to load players</p>
+              <p className="text-sm text-muted-foreground mb-4">Check your connection and try again.</p>
+              <Button variant="outline" size="sm" className="rounded-xl" onClick={() => playersQuery.refetch()} disabled={isRefetching}>
+                {isRefetching ? "Retrying…" : "Retry"}
+              </Button>
+            </CardContent>
           </Card>
         ) : players.length === 0 ? (
           <Card className="rounded-2xl">
@@ -211,7 +206,6 @@ export default function PlayersPage() {
                     <th className="text-right py-3 sm:py-4 px-3 sm:px-4 font-semibold text-foreground">Runs</th>
                     <th className="text-right py-3 sm:py-4 px-3 sm:px-4 font-semibold text-foreground">SR</th>
                     <th className="text-right py-3 sm:py-4 px-3 sm:px-4 font-semibold text-foreground">Wickets</th>
-                    <th className="text-left py-3 sm:py-4 px-3 sm:px-4 font-semibold text-foreground hidden sm:table-cell">Email</th>
                     <th className="text-right py-3 sm:py-4 px-3 sm:px-4 font-semibold text-foreground">Actions</th>
                   </tr>
                 </thead>
@@ -230,7 +224,6 @@ export default function PlayersPage() {
                         <td className="py-3 sm:py-4 px-3 sm:px-4 text-right tabular-nums">{stats ? stats.runs : "—"}</td>
                         <td className="py-3 sm:py-4 px-3 sm:px-4 text-right tabular-nums">{stats?.strikeRate != null ? stats.strikeRate : "—"}</td>
                         <td className="py-3 sm:py-4 px-3 sm:px-4 text-right tabular-nums">{stats ? stats.wickets : "—"}</td>
-                        <td className="py-3 sm:py-4 px-3 sm:px-4 text-muted-foreground hidden sm:table-cell truncate max-w-[180px]">{p.email ?? "—"}</td>
                         <td className="py-3 sm:py-4 px-3 sm:px-4 text-right">
                           <div className="flex items-center justify-end gap-1 flex-wrap">
                             <Button variant="ghost" size="sm" className="h-9 min-h-[36px] rounded-lg text-muted-foreground" asChild>

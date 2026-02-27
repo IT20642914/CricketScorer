@@ -15,6 +15,7 @@ import {
 } from "@/lib/engine";
 import type { Match, BallEvent, RulesConfig } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -498,8 +499,9 @@ export default function ScorePage() {
 
   if (loading || !match) {
     return (
-      <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center gap-2">
+        <Spinner className="h-5 w-5 border-cricket-green border-t-transparent text-cricket-green" />
+        <p className="text-muted-foreground">Loading…</p>
       </div>
     );
   }

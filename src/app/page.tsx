@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
@@ -48,11 +49,9 @@ function HomeContent() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
-          <p className="mt-4 text-muted-foreground">Loading...</p>
-        </div>
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center gap-2">
+        <Spinner className="h-6 w-6 border-cricket-green border-t-transparent text-cricket-green" />
+        <p className="text-muted-foreground">Loading…</p>
       </div>
     );
   }
@@ -245,7 +244,10 @@ function HomeContent() {
                 <div className="border-t pt-4">
                   <h3 className="font-semibold text-foreground mb-3">My stats</h3>
                   {profileStatsLoading ? (
-                    <p className="text-sm text-muted-foreground">Loading…</p>
+                    <p className="text-sm text-muted-foreground flex items-center gap-2">
+                      <Spinner className="h-4 w-4 shrink-0 border-cricket-green border-t-transparent text-cricket-green" />
+                      Loading…
+                    </p>
                   ) : profileStats ? (
                     <div className="space-y-4">
                       <div className="rounded-lg bg-muted/50 p-3">
@@ -295,11 +297,9 @@ function HomeContent() {
 export default function HomePage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent" />
-          <p className="mt-4 text-muted-foreground">Loading...</p>
-        </div>
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center gap-2">
+        <Spinner className="h-6 w-6 border-cricket-green border-t-transparent text-cricket-green" />
+        <p className="text-muted-foreground">Loading…</p>
       </div>
     }>
       <HomeContent />
