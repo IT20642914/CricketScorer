@@ -922,7 +922,7 @@ export default function ScorePage() {
       </Dialog>
 
       {/* Normal innings: select opening batting pair (striker & non-striker) before scoring */}
-      <Dialog open={needOpeningPairSelection} onOpenChange={() => {}}>
+      <Dialog open={!!needOpeningPairSelection} onOpenChange={() => {}}>
         <DialogContent className="max-w-sm sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="text-primary">
