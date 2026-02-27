@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,6 +15,7 @@ interface Match {
   teamAId: string;
   teamBId: string;
   updatedAt?: string;
+  createdByUserId?: string;
 }
 
 interface Team {
@@ -22,13 +24,21 @@ interface Team {
 }
 
 export default function MatchesPage() {
+  const { data: session } = useSession();
   const [matches, setMatches] = useState<Match[]>([]);
   const [teams, setTeams] = useState<Record<string, Team>>({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "IN_PROGRESS" | "COMPLETED">("all");
 
+  const userId = session?.user?.id;
+  const playerId = (session?.user as { playerId?: string } | undefined)?.playerId;
+
   useEffect(() => {
-    const q = filter === "all" ? "" : `?status=${filter}`;
+    const params = new URLSearchParams();
+    if (filter !== "all") params.set("status", filter);
+    if (userId) params.set("forUser", userId);
+    if (playerId) params.set("forPlayer", playerId);
+    const q = params.toString() ? `?${params}` : "";
     fetch(`/api/matches${q}`)
       .then((r) => r.json())
       .then((data) => {
@@ -46,7 +56,7 @@ export default function MatchesPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [filter]);
+  }, [filter, userId, playerId]);
 
   useEffect(() => {
     fetch("/api/teams")
@@ -87,9 +97,20 @@ export default function MatchesPage() {
           </TabsList>
         </Tabs>
         {loading ? (
-          <div className="flex justify-center py-12">
-            <span className="text-muted-foreground">Loading...</span>
-          </div>
+          <ul className="space-y-2">
+            <Card className="border-0 shadow-card">
+              <CardContent className="p-4">
+                <div className="flex justify-between gap-2">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="font-semibold text-muted-foreground">Loading…</p>
+                    <p className="text-sm text-muted-foreground">Loading…</p>
+                    <p className="text-xs text-muted-foreground">Loading…</p>
+                  </div>
+                  <span className="shrink-0 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">—</span>
+                </div>
+              </CardContent>
+            </Card>
+          </ul>
         ) : matches.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center">

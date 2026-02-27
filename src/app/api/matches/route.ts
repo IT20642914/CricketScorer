@@ -8,7 +8,21 @@ export async function GET(request: Request) {
     await connectDB();
     const url = new URL(request.url);
     const status = url.searchParams.get("status");
-    const query = status ? { status } : {};
+    const forUser = url.searchParams.get("forUser") ?? undefined;
+    const forPlayer = url.searchParams.get("forPlayer") ?? undefined;
+
+    const query: Record<string, unknown> = {};
+    if (status) query.status = status;
+    if (forUser || forPlayer) {
+      const or: Record<string, unknown>[] = [];
+      if (forUser) or.push({ createdByUserId: forUser });
+      if (forPlayer) {
+        or.push({ playingXI_A: forPlayer });
+        or.push({ playingXI_B: forPlayer });
+      }
+      query.$or = or;
+    }
+
     const matches = await MatchModel.find(query).sort({ date: -1, updatedAt: -1 }).lean();
     return NextResponse.json(matches);
   } catch (e) {
@@ -27,8 +41,9 @@ export async function POST(request: Request) {
     await connectDB();
     const match = await MatchModel.create({
       ...parsed.data,
-status: parsed.data.status ?? "SETUP",
-  innings: parsed.data.innings ?? [],
+      status: parsed.data.status ?? "SETUP",
+      innings: parsed.data.innings ?? [],
+      createdByUserId: parsed.data.createdByUserId ?? undefined,
       _id: new (await import("mongoose")).Types.ObjectId().toString(),
     });
     return NextResponse.json(match.toObject());

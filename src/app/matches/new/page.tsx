@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import type { Team } from "@/lib/types";
 import { DEFAULT_RULES } from "@/lib/types";
@@ -43,12 +44,14 @@ interface Player {
 function NewMatchContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: session } = useSession();
   const rematchId = searchParams.get("rematch");
   const [teams, setTeams] = useState<Team[]>([]);
   const [playersMap, setPlayersMap] = useState<Record<string, string>>({});
   const [step, setStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
   const [rematchLoaded, setRematchLoaded] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [error, setError] = useState("");
   const [state, setState] = useState<WizardState>({
     teamAId: "",
@@ -65,15 +68,44 @@ function NewMatchContent() {
   });
 
   useEffect(() => {
-    fetch("/api/teams").then((r) => r.json()).then((d) => Array.isArray(d) && setTeams(d));
-    fetch("/api/players?light=1").then((r) => r.json()).then((d) => {
-      if (Array.isArray(d)) {
-        const map: Record<string, string> = {};
-        (d as Player[]).forEach((p) => { map[p._id] = p.fullName; });
-        setPlayersMap(map);
-      }
-    });
+    let teamsDone = false;
+    let playersDone = false;
+    const checkBoth = () => {
+      if (teamsDone && playersDone) setDataLoaded(true);
+    };
+    fetch("/api/teams")
+      .then((r) => r.json())
+      .then((d) => { Array.isArray(d) && setTeams(d); teamsDone = true; checkBoth(); });
+    fetch("/api/players?light=1")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d)) {
+          const map: Record<string, string> = {};
+          (d as Player[]).forEach((p) => { map[p._id] = p.fullName; });
+          setPlayersMap(map);
+        }
+        playersDone = true;
+        checkBoth();
+      });
   }, []);
+
+  const userId = session?.user?.id;
+  const playerId = (session?.user as { playerId?: string } | undefined)?.playerId;
+
+  useEffect(() => {
+    if (!userId) return;
+    const params = new URLSearchParams();
+    params.set("forUser", userId);
+    if (playerId) params.set("forPlayer", playerId);
+    fetch(`/api/matches?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!Array.isArray(data)) return;
+        const count = data.length;
+        setState((s) => ({ ...s, matchName: s.matchName || `match-${count + 1}` }));
+      })
+      .catch(() => {});
+  }, [userId, playerId]);
 
   useEffect(() => {
     if (!rematchId || rematchLoaded || teams.length === 0) return;
@@ -158,6 +190,7 @@ function NewMatchContent() {
       innings: [
         { battingTeamId, bowlingTeamId, events: [] },
       ],
+      ...(session?.user?.id && { createdByUserId: session.user.id }),
     };
     try {
       const res = await fetch("/api/matches", {
@@ -208,8 +241,9 @@ function NewMatchContent() {
                 id="matchName"
                 value={state.matchName}
                 onChange={(e) => setState((s) => ({ ...s, matchName: e.target.value }))}
-                placeholder="e.g. Finals"
+                placeholder={dataLoaded ? "e.g. Finals" : "Loading…"}
                 className="h-11"
+                disabled={!dataLoaded}
               />
             </div>
             <div className="space-y-2">
@@ -220,16 +254,17 @@ function NewMatchContent() {
                 value={state.date}
                 onChange={(e) => setState((s) => ({ ...s, date: e.target.value }))}
                 className="h-11"
+                disabled={!dataLoaded}
               />
             </div>
             <div className="space-y-2">
               <Label>Team A</Label>
               <Select value={state.teamAId || "_"} onValueChange={(v) => setState((s) => ({ ...s, teamAId: v === "_" ? "" : v }))}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Select team" />
+                <SelectTrigger className="h-11 rounded-xl" disabled={!dataLoaded}>
+                  <SelectValue placeholder={dataLoaded ? "Select team" : "Loading…"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="_">Select team</SelectItem>
+                  <SelectItem value="_">{dataLoaded ? "Select team" : "Loading…"}</SelectItem>
                   {teams.map((t) => (
                     <SelectItem key={t._id} value={t._id}>{t.teamName}</SelectItem>
                   ))}
@@ -239,11 +274,11 @@ function NewMatchContent() {
             <div className="space-y-2">
               <Label>Team B</Label>
               <Select value={state.teamBId || "_"} onValueChange={(v) => setState((s) => ({ ...s, teamBId: v === "_" ? "" : v }))}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Select team" />
+                <SelectTrigger className="h-11 rounded-xl" disabled={!dataLoaded}>
+                  <SelectValue placeholder={dataLoaded ? "Select team" : "Loading…"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="_">Select team</SelectItem>
+                  <SelectItem value="_">{dataLoaded ? "Select team" : "Loading…"}</SelectItem>
                   {teams.map((t) => (
                     <SelectItem key={t._id} value={t._id}>{t.teamName}</SelectItem>
                   ))}
@@ -256,9 +291,11 @@ function NewMatchContent() {
         {step === 2 && (
           <>
             <div className="space-y-2">
-              <Label>Playing XI — {teamA?.teamName}</Label>
+              <Label>Playing XI — {teamA?.teamName ?? (dataLoaded ? "—" : "Loading…")}</Label>
               <ul className="space-y-1.5 max-h-48 overflow-y-auto rounded-md border border-input bg-muted/30 p-2">
-                {(teamA?.playerIds ?? []).map((pid) => (
+                {!dataLoaded ? (
+                  <li className="py-3 px-3 text-sm text-muted-foreground">Loading…</li>
+                ) : (teamA?.playerIds ?? []).map((pid) => (
                   <li key={pid}>
                     <label className="flex items-center gap-3 py-2.5 px-3 rounded-md hover:bg-background cursor-pointer">
                       <Checkbox
@@ -274,9 +311,11 @@ function NewMatchContent() {
               <p className="text-xs text-muted-foreground">{state.playingXI_A.length} selected</p>
             </div>
             <div className="space-y-2">
-              <Label>Playing XI — {teamB?.teamName}</Label>
+              <Label>Playing XI — {teamB?.teamName ?? (dataLoaded ? "—" : "Loading…")}</Label>
               <ul className="space-y-1.5 max-h-48 overflow-y-auto rounded-md border border-input bg-muted/30 p-2">
-                {(teamB?.playerIds ?? []).map((pid) => (
+                {!dataLoaded ? (
+                  <li className="py-3 px-3 text-sm text-muted-foreground">Loading…</li>
+                ) : (teamB?.playerIds ?? []).map((pid) => (
                   <li key={pid}>
                     <label className="flex items-center gap-3 py-2.5 px-3 rounded-md hover:bg-background cursor-pointer">
                       <Checkbox

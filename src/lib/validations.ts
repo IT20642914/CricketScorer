@@ -99,4 +99,5 @@ export const createMatchSchema = z.object({
   rulesConfig: rulesConfigSchema,
   status: z.enum(["SETUP", "IN_PROGRESS", "COMPLETED"]).optional(),
   innings: z.array(inningsSchemaZ).optional(),
+  createdByUserId: z.string().optional(),
 });

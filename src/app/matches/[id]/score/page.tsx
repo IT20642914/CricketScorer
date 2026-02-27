@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   computeInningsSummary,
   formatOvers,
@@ -51,6 +52,7 @@ interface Team {
 
 export default function ScorePage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [matchId, setMatchId] = useState<string | null>(null);
   const [match, setMatch] = useState<Match | null>(null);
   const [playersMap, setPlayersMap] = useState<Record<string, string>>({});
@@ -79,6 +81,9 @@ export default function ScorePage() {
   const [soStrikerId, setSoStrikerId] = useState("");
   const [soNonStrikerId, setSoNonStrikerId] = useState("");
   const [soBowlerId, setSoBowlerId] = useState("");
+  /** Normal innings: opening batting pair (striker & non-striker) before scoring */
+  const [openingStrikerId, setOpeningStrikerId] = useState("");
+  const [openingNonStrikerId, setOpeningNonStrikerId] = useState("");
 
   const loadMatch = useCallback(async (id: string) => {
     const [mRes, pRes, tRes] = await Promise.all([
@@ -173,6 +178,13 @@ export default function ScorePage() {
     events.length === 0 &&
     (!(currentInnings?.battingOrderOverride && currentInnings.battingOrderOverride.length >= 2) || !currentInnings?.initialBowlerId);
 
+  /** Normal innings (1st or 2nd): must select opening batting pair (striker & non-striker) before scoring. */
+  const needOpeningPairSelection =
+    currentInnings &&
+    !isSuperOver &&
+    events.length === 0 &&
+    (!(currentInnings.battingOrderOverride && currentInnings.battingOrderOverride.length >= 2));
+
   /** Same bowler cannot bowl 2 consecutive Super Overs: exclude who bowled in the previous SO for this team. */
   const previousSOForBowlingTeam = (match?.innings ?? [])
     .slice(0, -1)
@@ -212,6 +224,15 @@ export default function ScorePage() {
     }
   }, [needSuperOverSelection, inningsIndex]);
 
+  const lastOpeningPairInningsRef = useRef<number>(-1);
+  useEffect(() => {
+    if (needOpeningPairSelection && inningsIndex !== lastOpeningPairInningsRef.current) {
+      lastOpeningPairInningsRef.current = inningsIndex;
+      setOpeningStrikerId("");
+      setOpeningNonStrikerId("");
+    }
+  }, [needOpeningPairSelection, inningsIndex]);
+
   async function saveSuperOverSelection() {
     if (!matchId || !match || !currentInnings || sending) return;
     if (!soStrikerId || !soNonStrikerId || soStrikerId === soNonStrikerId || !soBowlerId) return;
@@ -238,6 +259,36 @@ export default function ScorePage() {
         }
         setMatch({ ...data, innings });
         setCurrentBowlerId(initialBowlerId);
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function saveOpeningPairSelection() {
+    if (!matchId || !match || !currentInnings || sending) return;
+    if (!openingStrikerId || !openingNonStrikerId || openingStrikerId === openingNonStrikerId) return;
+    setSending(true);
+    const restBatting = defaultBattingOrder.filter((id) => id !== openingStrikerId && id !== openingNonStrikerId);
+    const battingOrderOverride = [openingStrikerId, openingNonStrikerId, ...restBatting];
+    const updatedInnings = [...(match.innings ?? [])];
+    const lastIdx = updatedInnings.length - 1;
+    if (lastIdx >= 0) {
+      updatedInnings[lastIdx] = { ...updatedInnings[lastIdx]!, battingOrderOverride };
+    }
+    try {
+      const res = await fetch(`/api/matches/${matchId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ innings: updatedInnings }),
+      });
+      const data = await res.json();
+      if (data._id) {
+        const innings = Array.isArray(data.innings) ? [...data.innings] : [...(match.innings ?? [])];
+        if (lastIdx >= 0 && innings[lastIdx]) {
+          innings[lastIdx] = { ...innings[lastIdx], battingOrderOverride };
+        }
+        setMatch({ ...data, innings });
       }
     } finally {
       setSending(false);
@@ -464,6 +515,12 @@ export default function ScorePage() {
 
   const overStr = summary ? formatOvers(summary, effectiveBallsPerOver) : "0";
 
+  const canEditMatch = !!(
+    session?.user?.id &&
+    match?.createdByUserId &&
+    session.user.id === match.createdByUserId
+  );
+
   return (
     <div className="min-h-screen bg-cricket-cream pb-32 safe-area-pb">
       <header className="page-header">
@@ -472,19 +529,21 @@ export default function ScorePage() {
         </Button>
         <h1 className="text-lg font-bold truncate flex-1 text-center mx-2">{match.matchName}</h1>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-white/95 hover:bg-white/10"
-            onClick={() => {
-              setEditOversPerInnings(rules.oversPerInnings);
-              setEditBallsPerOver(rules.ballsPerOver);
-              setShowEditSheet(true);
-            }}
-          >
-            Edit
-          </Button>
-          <Button variant="ghost" size="sm" className="text-white/95 hover:bg-white/10" asChild>
+          {canEditMatch && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white font-medium bg-white/20 hover:bg-white/30 border border-white/30"
+              onClick={() => {
+                setEditOversPerInnings(rules.oversPerInnings);
+                setEditBallsPerOver(rules.ballsPerOver);
+                setShowEditSheet(true);
+              }}
+            >
+              Edit
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" className="text-white font-medium bg-white/20 hover:bg-white/30 border border-white/30" asChild>
             <Link href={`/matches/${matchId}/scorecard`}>Scorecard</Link>
           </Button>
         </div>
@@ -494,6 +553,10 @@ export default function ScorePage() {
         {needSuperOverSelection ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-800">
             <p className="font-medium">Select the two batsmen and the bowler in the dialog above to start this Super Over.</p>
+          </div>
+        ) : needOpeningPairSelection ? (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center text-foreground">
+            <p className="font-medium">Select the opening batting pair (striker and non-striker) in the dialog above to start this innings.</p>
           </div>
         ) : (
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "score" | "batting" | "bowling")} className="space-y-4">
@@ -858,6 +921,60 @@ export default function ScorePage() {
         </DialogContent>
       </Dialog>
 
+      {/* Normal innings: select opening batting pair (striker & non-striker) before scoring */}
+      <Dialog open={needOpeningPairSelection} onOpenChange={() => {}}>
+        <DialogContent className="max-w-sm sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-primary">
+              {inningsIndex === 0 ? "1st innings" : "2nd innings"} – Opening batting pair
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Select who will open the batting and who will face first (striker).
+          </p>
+          <div className="rounded-md border border-primary/20 bg-primary/5 p-3 space-y-3">
+            <p className="text-xs font-semibold text-primary">Batting – {battingTeamName}</p>
+            <div className="space-y-2">
+              <Label>Striker (facing)</Label>
+              <Select value={openingStrikerId || "_"} onValueChange={(v) => setOpeningStrikerId(v === "_" ? "" : v)}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Select batsman" />
+                </SelectTrigger>
+                <SelectContent className="z-[100]">
+                  <SelectItem value="_">Select</SelectItem>
+                  {defaultBattingOrder.filter((id) => id !== openingNonStrikerId).map((id) => (
+                    <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Non-striker</Label>
+              <Select value={openingNonStrikerId || "_"} onValueChange={(v) => setOpeningNonStrikerId(v === "_" ? "" : v)}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Select batsman" />
+                </SelectTrigger>
+                <SelectContent className="z-[100]">
+                  <SelectItem value="_">Select</SelectItem>
+                  {defaultBattingOrder.filter((id) => id !== openingStrikerId).map((id) => (
+                    <SelectItem key={id} value={id}>{playersMap[id] ?? id}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 pt-4">
+            <Button
+              onClick={saveOpeningPairSelection}
+              disabled={sending || !openingStrikerId || !openingNonStrikerId || openingStrikerId === openingNonStrikerId}
+              className="w-full h-11"
+            >
+              Start innings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Change bowler (after over or tap anytime) */}
       <Sheet open={showNextBowler && !shouldEnd.end} onOpenChange={(open) => !open && setShowNextBowler(false)}>
         <SheetContent side="bottom" className="rounded-t-2xl max-h-[80vh]">
@@ -893,6 +1010,37 @@ export default function ScorePage() {
           <p className="text-muted-foreground">
             {summary?.totalRuns ?? 0}/{summary?.wickets ?? 0} in {overStr} overs
           </p>
+          {inningsIndex % 2 === 0 && match && (() => {
+            const nextBattingTeamId = bowlingTeamId;
+            const nextBowlingTeamId = battingTeamId;
+            const nextBattingName = teamsMap[nextBattingTeamId] ?? (match.teamAId === nextBattingTeamId ? "Team A" : "Team B");
+            const nextBowlingName = teamsMap[nextBowlingTeamId] ?? (match.teamAId === nextBowlingTeamId ? "Team A" : "Team B");
+            const nextBattingXI = (match.teamAId === nextBattingTeamId ? match.playingXI_A : match.playingXI_B) ?? [];
+            const nextBowlingXI = (match.teamAId === nextBowlingTeamId ? match.playingXI_A : match.playingXI_B) ?? [];
+            return (
+              <div className="text-left space-y-3 pt-2 border-t">
+                <p className="text-sm font-medium text-foreground">
+                  {isSuperOver ? "Super Over 2" : "2nd innings"} — playing members
+                </p>
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">Batting: {nextBattingName}</p>
+                  <ul className="text-xs text-foreground list-disc list-inside pl-1 space-y-0.5">
+                    {nextBattingXI.map((id) => (
+                      <li key={id}>{playersMap[id] ?? id}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">Bowling: {nextBowlingName}</p>
+                  <ul className="text-xs text-foreground list-disc list-inside pl-1 space-y-0.5">
+                    {nextBowlingXI.map((id) => (
+                      <li key={id}>{playersMap[id] ?? id}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            );
+          })()}
           <DialogFooter className="flex-col gap-2 sm:flex-col">
             {inningsIndex % 2 === 0 ? (
               <Button onClick={endInnings} disabled={sending} className="w-full h-12">
