@@ -70,11 +70,18 @@ const config: Config = {
   		},
   		borderRadius: {
   			card: '0.75rem',
+  			'card-lg': '1rem',
   			input: '0.5rem',
+  			xl: '0.75rem',
+  			'2xl': '1rem',
   			pill: '9999px',
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
+  		},
+  		spacing: {
+  			'page': '1.25rem',
+  			'page-lg': '1.5rem'
   		}
   	}
   },

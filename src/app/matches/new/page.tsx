@@ -19,6 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-keys";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -89,6 +91,7 @@ function NewMatchContent() {
       });
   }, []);
 
+  const queryClient = useQueryClient();
   const userId = session?.user?.id;
   const playerId = (session?.user as { playerId?: string } | undefined)?.playerId;
 
@@ -97,12 +100,13 @@ function NewMatchContent() {
     const params = new URLSearchParams();
     params.set("forUser", userId);
     if (playerId) params.set("forPlayer", playerId);
+    params.set("limit", "1");
+    params.set("page", "1");
     fetch(`/api/matches?${params}`)
       .then((r) => r.json())
       .then((data) => {
-        if (!Array.isArray(data)) return;
-        const count = data.length;
-        setState((s) => ({ ...s, matchName: s.matchName || `match-${count + 1}` }));
+        const total = typeof data?.total === "number" ? data.total : 0;
+        setState((s) => ({ ...s, matchName: s.matchName || `match-${total + 1}` }));
       })
       .catch(() => {});
   }, [userId, playerId]);
@@ -205,6 +209,7 @@ function NewMatchContent() {
         return;
       }
       const match = await res.json();
+      queryClient.invalidateQueries({ queryKey: queryKeys.matches() });
       router.push(`/matches/${match._id}/score`);
     } catch {
       setError("Network error");

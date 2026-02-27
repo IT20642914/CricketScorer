@@ -21,7 +21,6 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
   const callbackUrl = searchParams.get("callbackUrl") || "/";
-  const [showDebug, setShowDebug] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
   const [showProfileSheet, setShowProfileSheet] = useState(false);
   const [profileStats, setProfileStats] = useState<PlayerStatsResponse | null>(null);
@@ -47,13 +46,6 @@ function HomeContent() {
       .finally(() => setProfileStatsLoading(false));
   }, [showProfileSheet, playerId]);
 
-  // Logger: see session.user in browser console (what the client gets)
-  useEffect(() => {
-    if (session?.user) {
-      console.log("[NextAuth] client – session.user:", session.user);
-    }
-  }, [session?.user]);
-
   if (status === "loading") {
     return (
       <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
@@ -68,24 +60,24 @@ function HomeContent() {
   // Show login page if not authenticated
   if (!session) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-600 to-blue-800">
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 p-4 safe-area-pb">
         <div className="w-full max-w-md">
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            <h1 className="text-3xl font-bold text-center mb-2">Cricket Scorer</h1>
-            <p className="text-gray-600 text-center mb-8">
+          <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8">
+            <h1 className="text-2xl sm:text-3xl font-bold text-center mb-2">Cricket Scorer</h1>
+            <p className="text-gray-600 text-center mb-6 sm:mb-8 text-sm sm:text-base">
               Sign in to your account to continue
             </p>
 
             {error && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-4 text-sm">
                 <p className="font-semibold">Error: {error}</p>
-                <p className="text-sm">Please check your credentials and try again.</p>
+                <p className="text-sm mt-1">Please check your credentials and try again.</p>
               </div>
             )}
 
             <Button
               onClick={() => signIn("google", { callbackUrl })}
-              className="w-full mb-4 bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
+              className="w-full h-12 min-h-[48px] mb-4 bg-white text-gray-700 border-2 border-gray-200 hover:bg-gray-50 rounded-xl font-medium"
               size="lg"
             >
               <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
@@ -114,21 +106,21 @@ function HomeContent() {
   return (
     <div className="min-h-screen bg-cricket-cream">
       <header className="page-header flex items-center justify-between gap-3">
-        <Link href="/" className="flex items-center gap-3 shrink-0">
+        <Link href="/" className="flex items-center gap-3 shrink-0 min-w-0">
           <Image
             src="/logo.jpeg"
             alt="Cricket Scoring"
-            width={36}
-            height={36}
-            className="rounded-full object-cover bg-white/10"
+            width={40}
+            height={40}
+            className="rounded-full object-cover bg-white/10 ring-2 ring-white/20 shrink-0"
           />
-          <h1 className="text-xl font-bold tracking-tight">Cricket Scoring</h1>
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight truncate">Cricket Scoring</h1>
         </Link>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setShowProfileSheet(true)}
-            className="flex items-center gap-2 rounded-lg hover:bg-white/10 p-1 -m-1 transition-colors"
+            className="flex items-center gap-2 rounded-xl hover:bg-white/10 active:bg-white/20 p-2 -m-1 transition-colors min-h-[44px] min-w-[44px] sm:min-w-0"
           >
             {session.user?.image && !avatarError ? (
               <img
@@ -159,82 +151,59 @@ function HomeContent() {
           </Button>
         </div>
       </header>
-      {/* Debug: show session values so you can see what we get (e.g. user.image) */}
-      <div className="px-4 max-w-lg mx-auto">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground text-xs"
-          onClick={() => setShowDebug((d) => !d)}
-        >
-          {showDebug ? "Hide" : "Show"} session debug
-        </Button>
-        {showDebug && session && (
-          <Card className="mt-2 p-3 overflow-auto max-h-64">
-            <p className="text-xs font-medium text-muted-foreground mb-1">session.user (what we get):</p>
-            <pre className="text-xs bg-muted/50 p-2 rounded whitespace-pre-wrap break-all">
-              {JSON.stringify(session.user, null, 2)}
-            </pre>
-            <p className="text-xs text-muted-foreground mt-2">
-              image URL: {session.user?.image ?? "(empty)"}
-            </p>
-          </Card>
-        )}
-      </div>
-      <main className="p-4 max-w-lg mx-auto">
-        <div className="space-y-3">
-          <Card className="border-0 shadow-card overflow-hidden">
+      <main className="page-content">
+        <div className="space-y-3 sm:space-y-4">
+          <Card className="border-0 shadow-card overflow-hidden rounded-2xl transition-shadow hover:shadow-md active:scale-[0.99]">
             <Link href="/matches/new" className="block">
-              <CardContent className="flex items-center gap-4 p-4">
-                <span className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/15 text-primary text-xl font-bold shrink-0">
+              <CardContent className="flex items-center gap-4 p-4 sm:p-5">
+                <span className="flex items-center justify-center w-14 h-14 rounded-2xl bg-cricket-green/15 text-cricket-green text-2xl font-bold shrink-0">
                   +
                 </span>
                 <div className="min-w-0 flex-1 text-left">
-                  <p className="font-semibold text-foreground">New Match</p>
-                  <p className="text-sm text-muted-foreground">Create and start scoring</p>
+                  <p className="font-semibold text-foreground text-base">New Match</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">Create and start scoring</p>
                 </div>
-                <span className="text-muted-foreground">→</span>
+                <span className="text-muted-foreground text-lg shrink-0">→</span>
               </CardContent>
             </Link>
           </Card>
-          <Card className="border-0 shadow-card overflow-hidden">
+          <Card className="border-0 shadow-card overflow-hidden rounded-2xl transition-shadow hover:shadow-md active:scale-[0.99]">
             <Link href="/matches?status=IN_PROGRESS" className="block">
-              <CardContent className="flex items-center gap-4 p-4">
-                <span className="flex items-center justify-center w-12 h-12 rounded-full bg-amber-500/20 text-amber-700 text-xl shrink-0">
+              <CardContent className="flex items-center gap-4 p-4 sm:p-5">
+                <span className="flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-700 text-2xl shrink-0">
                   ▶
                 </span>
                 <div className="min-w-0 flex-1 text-left">
-                  <p className="font-semibold text-foreground">Resume Match</p>
-                  <p className="text-sm text-muted-foreground">Continue live scoring</p>
+                  <p className="font-semibold text-foreground text-base">Resume Match</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">Continue live scoring</p>
                 </div>
-                <span className="text-muted-foreground">→</span>
+                <span className="text-muted-foreground text-lg shrink-0">→</span>
               </CardContent>
             </Link>
           </Card>
-          <Card className="border-0 shadow-card overflow-hidden">
+          <Card className="border-0 shadow-card overflow-hidden rounded-2xl transition-shadow hover:shadow-md active:scale-[0.99]">
             <Link href="/matches" className="block">
-              <CardContent className="flex items-center gap-4 p-4">
-                <span className="flex items-center justify-center w-12 h-12 rounded-full bg-secondary text-secondary-foreground text-xl shrink-0">
+              <CardContent className="flex items-center gap-4 p-4 sm:p-5">
+                <span className="flex items-center justify-center w-14 h-14 rounded-2xl bg-secondary text-secondary-foreground text-2xl shrink-0">
                   ≡
                 </span>
                 <div className="min-w-0 flex-1 text-left">
-                  <p className="font-semibold text-foreground">Match History</p>
-                  <p className="text-sm text-muted-foreground">View past scorecards</p>
+                  <p className="font-semibold text-foreground text-base">Match History</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">View past scorecards</p>
                 </div>
-                <span className="text-muted-foreground">→</span>
+                <span className="text-muted-foreground text-lg shrink-0">→</span>
               </CardContent>
             </Link>
           </Card>
         </div>
 
-        <nav className="mt-8 pt-6 border-t border-border">
+        <nav className="mt-8 sm:mt-10 pt-6 border-t border-border">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Manage</p>
           <div className="flex gap-3">
-            <Button variant="outline" className="flex-1 h-12" asChild>
+            <Button variant="outline" className="flex-1 h-12 min-h-[48px] rounded-xl font-medium" asChild>
               <Link href="/players">Players</Link>
             </Button>
-            <Button variant="outline" className="flex-1 h-12" asChild>
+            <Button variant="outline" className="flex-1 h-12 min-h-[48px] rounded-xl font-medium" asChild>
               <Link href="/teams">Teams</Link>
             </Button>
           </div>

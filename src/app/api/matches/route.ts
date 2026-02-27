@@ -10,6 +10,9 @@ export async function GET(request: Request) {
     const status = url.searchParams.get("status");
     const forUser = url.searchParams.get("forUser") ?? undefined;
     const forPlayer = url.searchParams.get("forPlayer") ?? undefined;
+    const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") ?? "10", 10) || 10));
+    const page = Math.max(1, parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
+    const skip = (page - 1) * limit;
 
     const query: Record<string, unknown> = {};
     if (status) query.status = status;
@@ -23,8 +26,11 @@ export async function GET(request: Request) {
       query.$or = or;
     }
 
-    const matches = await MatchModel.find(query).sort({ date: -1, updatedAt: -1 }).lean();
-    return NextResponse.json(matches);
+    const [matches, total] = await Promise.all([
+      MatchModel.find(query).sort({ date: -1, updatedAt: -1 }).skip(skip).limit(limit).lean(),
+      MatchModel.countDocuments(query),
+    ]);
+    return NextResponse.json({ matches, total });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Failed to fetch matches" }, { status: 500 });
