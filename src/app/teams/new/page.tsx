@@ -77,7 +77,7 @@ export default function NewTeamPage() {
   const availableToAdd = players.filter((p) => !playerIds.includes(p._id));
 
   return (
-    <div className="min-h-screen bg-cricket-cream">
+    <div className="min-h-screen">
       <header className="page-header">
         <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 -ml-2" asChild>
           <Link href="/teams">←</Link>

@@ -66,7 +66,7 @@ export default function EditPlayerPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-cricket-cream flex items-center justify-center gap-2">
+      <div className="min-h-screen flex items-center justify-center gap-2">
         <Spinner className="h-5 w-5 border-cricket-green border-t-transparent text-cricket-green" />
         <span className="text-muted-foreground">Loading…</span>
       </div>
@@ -74,7 +74,7 @@ export default function EditPlayerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cricket-cream">
+    <div className="min-h-screen">
       <header className="page-header">
         <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 -ml-2" asChild>
           <Link href={`/players/${id}`}>←</Link>

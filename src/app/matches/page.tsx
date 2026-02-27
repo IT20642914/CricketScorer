@@ -115,7 +115,7 @@ export default function MatchesPage() {
   const goToPage = (page: number) => setCurrentPage((p) => Math.max(1, Math.min(totalPages, page)));
 
   return (
-    <div className="min-h-screen bg-cricket-cream">
+    <div className="min-h-screen">
       <header className="page-header">
         <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 active:bg-white/20 -ml-1 rounded-xl min-h-[44px] min-w-[44px]" asChild>
           <Link href="/">←</Link>

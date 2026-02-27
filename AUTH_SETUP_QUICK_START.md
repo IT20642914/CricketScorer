@@ -1,8 +1,9 @@
-# Cricket Scorer - Google OAuth Setup
+# - Google OAuth Setup
 
 ## Quick Start
 
 1. **Copy `.env.local.example` to `.env.local`**
+
    ```bash
    cp .env.local.example .env.local
    ```
@@ -12,6 +13,7 @@
 3. **Fill in your credentials in `.env.local`**
 
 4. **Run the development server**
+
    ```bash
    npm run dev
    ```

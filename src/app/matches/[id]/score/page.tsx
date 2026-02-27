@@ -499,7 +499,7 @@ export default function ScorePage() {
 
   if (loading || !match) {
     return (
-      <div className="min-h-screen bg-cricket-cream flex items-center justify-center gap-2">
+      <div className="min-h-screen flex items-center justify-center gap-2">
         <Spinner className="h-5 w-5 border-cricket-green border-t-transparent text-cricket-green" />
         <p className="text-muted-foreground">Loading…</p>
       </div>
@@ -508,7 +508,7 @@ export default function ScorePage() {
 
   if (match.status !== "IN_PROGRESS" || !currentInnings) {
     return (
-      <div className="min-h-screen bg-cricket-cream p-4 flex flex-col items-center justify-center gap-4">
+      <div className="min-h-screen p-4 flex flex-col items-center justify-center gap-4">
         <p className="text-gray-600">No active innings.</p>
         <Link href={`/matches/${matchId}/scorecard`} className="text-cricket-green font-medium">View scorecard</Link>
       </div>
@@ -524,7 +524,7 @@ export default function ScorePage() {
   );
 
   return (
-    <div className="min-h-screen bg-cricket-cream pb-32 safe-area-pb">
+    <div className="min-h-screen pb-32 safe-area-pb">
       <header className="page-header">
         <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 -ml-2" asChild>
           <Link href="/matches">← Back</Link>
@@ -553,24 +553,24 @@ export default function ScorePage() {
 
       <main className="p-4 max-w-lg mx-auto">
         {needSuperOverSelection ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center text-amber-800">
+          <div className="rounded-xl border border-amber-300 bg-white shadow-md p-6 text-center text-amber-900">
             <p className="font-medium">Select the two batsmen and the bowler in the dialog above to start this Super Over.</p>
           </div>
         ) : needOpeningPairSelection ? (
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 text-center text-foreground">
+          <div className="rounded-xl border border-gray-200 bg-white shadow-md p-6 text-center text-gray-800">
             <p className="font-medium">Select the opening batting pair (striker and non-striker) in the dialog above to start this innings.</p>
           </div>
         ) : (
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "score" | "batting" | "bowling")} className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3 bg-muted p-1 rounded-xl h-12">
-            <TabsTrigger value="score" className="rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary">Score</TabsTrigger>
-            <TabsTrigger value="batting" className="rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary">Batting</TabsTrigger>
-            <TabsTrigger value="bowling" className="rounded-lg data-[state=active]:bg-background data-[state=active]:text-primary">Bowling</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 bg-white/95 shadow border border-gray-200 p-1 rounded-xl h-12">
+            <TabsTrigger value="score" className="rounded-lg data-[state=active]:bg-cricket-green data-[state=active]:text-white data-[state=inactive]:text-gray-700">Score</TabsTrigger>
+            <TabsTrigger value="batting" className="rounded-lg data-[state=active]:bg-cricket-green data-[state=active]:text-white data-[state=inactive]:text-gray-700">Batting</TabsTrigger>
+            <TabsTrigger value="bowling" className="rounded-lg data-[state=active]:bg-cricket-green data-[state=active]:text-white data-[state=inactive]:text-gray-700">Bowling</TabsTrigger>
           </TabsList>
 
           <TabsContent value="score" className="mt-0 space-y-4">
         {/* Score card */}
-        <div className="bg-gradient-to-br from-white to-cricket-cream rounded-2xl shadow-lg p-5 mb-4 border border-cricket-green/20">
+        <div className="bg-white rounded-2xl shadow-xl p-5 mb-4 border border-gray-200/90">
           <div className="flex items-baseline justify-between gap-2">
             <div>
               {isSuperOver && (
@@ -580,19 +580,19 @@ export default function ScorePage() {
               )}
               <span className="text-4xl font-bold text-cricket-green tabular-nums tracking-tight">
                 {summary?.totalRuns ?? 0}
-                <span className="text-gray-300 font-normal mx-0.5">/</span>
+                <span className="text-gray-500 font-normal mx-0.5">/</span>
                 {summary?.wickets ?? 0}
               </span>
-              <p className="text-xs text-gray-500 mt-0.5">in {overStr} of {maxOversForInnings} over{maxOversForInnings !== 1 ? "s" : ""}</p>
+              <p className="text-xs text-gray-600 mt-0.5">in {overStr} of {maxOversForInnings} over{maxOversForInnings !== 1 ? "s" : ""}</p>
             </div>
             <div className="text-right">
-              <p className="text-lg font-semibold text-gray-700">CRR</p>
+              <p className="text-lg font-semibold text-gray-800">CRR</p>
               <p className="text-xl font-bold text-cricket-green tabular-nums">{summary?.runRate ?? 0}</p>
             </div>
           </div>
           {isChasingInnings && firstInningsRuns > 0 && (
-            <div className="mt-4 pt-4 border-t border-cricket-green/10 rounded-lg bg-white/60 p-3">
-              <p className="text-sm font-medium text-gray-700">Target <span className="text-cricket-green font-bold">{target}</span></p>
+            <div className="mt-4 pt-4 border-t border-gray-200 rounded-lg bg-gray-50 p-3">
+              <p className="text-sm font-medium text-gray-800">Target <span className="text-cricket-green font-bold">{target}</span></p>
               <p className="text-sm text-gray-600">
                 Need <span className="font-bold text-cricket-green">{runsNeeded}</span> in <span className="font-bold">{ballsLeft}</span> balls
                 {ballsLeft > 0 && <span className="text-gray-500"> · RRR {requiredRR.toFixed(2)}</span>}
@@ -602,20 +602,20 @@ export default function ScorePage() {
         </div>
 
         {/* Striker & bowler */}
-        <div className="flex items-center justify-between mb-4 px-1 text-sm">
-          <span className="text-gray-600">Striker: <span className="font-semibold text-gray-900">{playersMap[strikerId] ?? strikerId}</span></span>
+        <div className="flex items-center justify-between mb-4 p-3 rounded-xl bg-white shadow-md border border-gray-200/90 text-sm">
+          <span className="text-gray-700">Striker: <span className="font-semibold text-gray-900">{playersMap[strikerId] ?? strikerId}</span></span>
           {canChangeBowler ? (
             <button
               type="button"
               onClick={() => setShowNextBowler(true)}
               className="text-left py-1 pr-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 touch-manipulation"
             >
-              <span className="text-gray-600">Bowler: </span>
+              <span className="text-gray-700">Bowler: </span>
               <span className="font-semibold text-cricket-green underline decoration-dotted">{(playersMap[currentBowlerId] ?? currentBowlerId) || "Tap to set"}</span>
             </button>
           ) : (
             <div className="py-1 pr-2">
-              <span className="text-gray-600">Bowler: </span>
+              <span className="text-gray-700">Bowler: </span>
               <span className="font-semibold text-gray-900">{(playersMap[currentBowlerId] ?? currentBowlerId) || "—"}</span>
             </div>
           )}
@@ -628,7 +628,7 @@ export default function ScorePage() {
               key={r}
               onClick={() => addBall({ runsOffBat: r })}
               disabled={sending || !currentBowlerId || chaseComplete}
-              className="min-h-[52px] py-4 rounded-xl bg-cricket-green text-white font-bold text-xl shadow-md active:scale-95 transition-transform touch-manipulation disabled:opacity-50 disabled:active:scale-100"
+              className="min-h-[52px] py-4 rounded-xl bg-cricket-green text-white font-bold text-xl shadow-lg border-2 border-cricket-green/80 active:scale-95 transition-transform touch-manipulation disabled:opacity-50 disabled:active:scale-100"
             >
               {r}
             </button>
@@ -640,28 +640,28 @@ export default function ScorePage() {
           <button
             onClick={() => addBall({ runsOffBat: 0, extras: { type: "WD", runs: rules.wideRuns } })}
             disabled={sending || !currentBowlerId || chaseComplete}
-            className="min-h-[48px] py-3 rounded-xl bg-amber-500 text-white font-semibold text-sm shadow active:scale-95 touch-manipulation disabled:opacity-50"
+            className="min-h-[48px] py-3 rounded-xl bg-amber-500 text-white font-semibold text-sm shadow-md border border-amber-600/50 active:scale-95 touch-manipulation disabled:opacity-50"
           >
             Wide
           </button>
           <button
             onClick={() => addBall({ runsOffBat: 0, extras: { type: "NB", runs: rules.noBallRuns } })}
             disabled={sending || !currentBowlerId || chaseComplete}
-            className="min-h-[48px] py-3 rounded-xl bg-amber-600 text-white font-semibold text-sm shadow active:scale-95 touch-manipulation disabled:opacity-50"
+            className="min-h-[48px] py-3 rounded-xl bg-amber-600 text-white font-semibold text-sm shadow-md border border-amber-700/50 active:scale-95 touch-manipulation disabled:opacity-50"
           >
             No ball
           </button>
           <button
             onClick={() => setShowByesRuns(showByesRuns === "B" ? null : "B")}
             disabled={sending || !currentBowlerId || chaseComplete}
-            className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow active:scale-95 touch-manipulation ${showByesRuns === "B" ? "ring-2 ring-cricket-green bg-amber-100 text-amber-900" : "bg-amber-100 text-amber-900"}`}
+            className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow-md border active:scale-95 touch-manipulation disabled:opacity-50 ${showByesRuns === "B" ? "ring-2 ring-cricket-green bg-white border-cricket-green text-gray-900" : "bg-white border-amber-300 text-amber-900"}`}
           >
             Byes
           </button>
           <button
             onClick={() => setShowByesRuns(showByesRuns === "LB" ? null : "LB")}
             disabled={sending || !currentBowlerId || chaseComplete}
-            className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow active:scale-95 touch-manipulation ${showByesRuns === "LB" ? "ring-2 ring-cricket-green bg-amber-50 text-amber-800" : "bg-amber-50 text-amber-800"}`}
+            className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow-md border active:scale-95 touch-manipulation disabled:opacity-50 ${showByesRuns === "LB" ? "ring-2 ring-cricket-green bg-white border-cricket-green text-gray-900" : "bg-white border-amber-200 text-amber-800"}`}
           >
             Leg byes
           </button>
@@ -669,15 +669,15 @@ export default function ScorePage() {
 
         {/* Byes / Leg byes runs: 0 1 2 3 4 */}
         {showByesRuns && (
-          <div className="mb-4 p-3 bg-amber-50 rounded-xl border border-amber-200">
-            <p className="text-xs font-medium text-amber-800 mb-2">Runs ({showByesRuns === "B" ? "Byes" : "Leg byes"})</p>
+          <div className="mb-4 p-3 bg-white rounded-xl border border-amber-200 shadow-md">
+            <p className="text-xs font-medium text-amber-900 mb-2">Runs ({showByesRuns === "B" ? "Byes" : "Leg byes"})</p>
             <div className="flex flex-wrap gap-2">
               {[0, 1, 2, 3, 4].map((r) => (
                 <button
                   key={r}
                   onClick={() => addBall({ runsOffBat: 0, extras: { type: showByesRuns, runs: r } })}
                   disabled={sending || chaseComplete}
-                  className="w-12 h-12 rounded-lg bg-white border-2 border-amber-300 text-amber-900 font-bold active:scale-95 touch-manipulation"
+                  className="w-12 h-12 rounded-lg bg-white border-2 border-amber-400 text-amber-900 font-bold shadow active:scale-95 touch-manipulation"
                 >
                   {r}
                 </button>
@@ -692,7 +692,7 @@ export default function ScorePage() {
             onClick={() => { setWicketStep(1); setNewBatterId(""); setWicketBatterId(""); setShowWicket(true); }}
             disabled={sending || !currentBowlerId || chaseComplete}
             variant="destructive"
-            className="min-h-[48px] px-4 rounded-xl"
+            className="min-h-[48px] px-4 rounded-xl shadow-md border-2 border-red-800/50"
           >
             Wicket
           </Button>
@@ -700,17 +700,17 @@ export default function ScorePage() {
             onClick={undoLast}
             disabled={sending || events.length === 0}
             variant="outline"
-            className="min-h-[48px] px-4 rounded-xl"
+            className="min-h-[48px] px-4 rounded-xl bg-white border-2 border-gray-300 text-gray-800 shadow-md hover:bg-gray-50"
           >
             Undo
           </Button>
           {!isSecondInnings && (
-            <Button onClick={endInnings} disabled={sending} className="min-h-[48px] px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white">
+            <Button onClick={endInnings} disabled={sending} className="min-h-[48px] px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white shadow-md border border-amber-700/50">
               End innings
             </Button>
           )}
           {isChasingInnings && (runsNeeded <= 0 || shouldEnd.end) && (
-            <Button onClick={openResultModal} disabled={sending} variant="destructive" className="min-h-[48px] px-4 rounded-xl">
+            <Button onClick={openResultModal} disabled={sending} variant="destructive" className="min-h-[48px] px-4 rounded-xl shadow-md">
               End match
             </Button>
           )}
@@ -727,15 +727,15 @@ export default function ScorePage() {
             if (count >= effectiveBallsPerOver) break;
           }
           return (
-            <div className="mt-5">
-              <p className="text-xs font-medium text-gray-500 mb-2">This over</p>
+            <div className="mt-5 p-3 rounded-xl bg-white/95 shadow border border-gray-200">
+              <p className="text-xs font-medium text-gray-700 mb-2">This over</p>
               <div className="flex flex-wrap gap-1.5">
                 {thisOver.map((e) => {
                   const r = (e.runsOffBat ?? 0) + (e.extras?.runs ?? 0);
                   const w = e.wicket ? "W" : "";
                   const ext = e.extras?.type ?? "";
                   return (
-                    <span key={e._id} className="inline-flex items-center justify-center min-w-[32px] px-2 py-1.5 rounded-lg bg-gray-200 text-gray-800 font-medium text-sm">
+                    <span key={e._id} className="inline-flex items-center justify-center min-w-[32px] px-2 py-1.5 rounded-lg bg-gray-100 border border-gray-200 text-gray-900 font-medium text-sm">
                       {w || ext || (r > 0 ? r : "·")}
                     </span>
                   );

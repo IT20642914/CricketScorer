@@ -52,7 +52,7 @@ export default function ScorecardPage() {
 
   if (loading || !match) {
     return (
-      <div className="min-h-screen bg-cricket-cream flex items-center justify-center gap-2">
+      <div className="min-h-screen flex items-center justify-center gap-2">
         <Spinner className="h-5 w-5 border-cricket-green border-t-transparent text-cricket-green" />
         <p className="text-muted-foreground">Loading…</p>
       </div>
@@ -91,7 +91,7 @@ export default function ScorecardPage() {
   const resultMessage = getMatchResult();
 
   return (
-    <div className="min-h-screen bg-cricket-cream pb-8">
+    <div className="min-h-screen pb-8">
       <header className="bg-cricket-green text-white px-4 py-4 flex items-center justify-between sticky top-0 z-10">
         <Link href={match.status === "IN_PROGRESS" ? `/matches/${match._id}/score` : "/matches"} className="text-white">←</Link>
         <h1 className="text-lg font-bold truncate flex-1 text-center mx-2">{match.matchName}</h1>

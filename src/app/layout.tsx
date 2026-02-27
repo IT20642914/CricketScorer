@@ -15,10 +15,24 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen">
-        <SessionProvider>
-          <QueryProvider>{children}</QueryProvider>
-        </SessionProvider>
+      <body className="min-h-screen bg-gray-800">
+        <div className="relative min-h-screen">
+          {/* App-wide background image (same as login screen) */}
+          <div
+            className="fixed inset-0 z-0 bg-cover bg-center bg-no-repeat"
+            style={{ backgroundImage: "url('/api/bg')" }}
+            aria-hidden
+          />
+          <div
+            className="fixed inset-0 z-[1] bg-black/40"
+            aria-hidden
+          />
+          <div className="relative z-10 min-h-screen">
+            <SessionProvider>
+              <QueryProvider>{children}</QueryProvider>
+            </SessionProvider>
+          </div>
+        </div>
       </body>
     </html>
   );

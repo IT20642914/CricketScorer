@@ -162,7 +162,7 @@ export default function TeamsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cricket-cream">
+    <div className="min-h-screen">
       <header className="page-header">
         <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 active:bg-white/20 -ml-1 rounded-xl min-h-[44px] min-w-[44px]" asChild>
           <Link href="/">←</Link>
