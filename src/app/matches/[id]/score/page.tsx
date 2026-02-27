@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   computeInningsSummary,
   formatOvers,
@@ -51,6 +52,7 @@ interface Team {
 
 export default function ScorePage() {
   const router = useRouter();
+  const { data: session } = useSession();
   const [matchId, setMatchId] = useState<string | null>(null);
   const [match, setMatch] = useState<Match | null>(null);
   const [playersMap, setPlayersMap] = useState<Record<string, string>>({});
@@ -464,6 +466,12 @@ export default function ScorePage() {
 
   const overStr = summary ? formatOvers(summary, effectiveBallsPerOver) : "0";
 
+  const canEditMatch = !!(
+    session?.user?.id &&
+    match?.createdByUserId &&
+    session.user.id === match.createdByUserId
+  );
+
   return (
     <div className="min-h-screen bg-cricket-cream pb-32 safe-area-pb">
       <header className="page-header">
@@ -472,19 +480,21 @@ export default function ScorePage() {
         </Button>
         <h1 className="text-lg font-bold truncate flex-1 text-center mx-2">{match.matchName}</h1>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-white/95 hover:bg-white/10"
-            onClick={() => {
-              setEditOversPerInnings(rules.oversPerInnings);
-              setEditBallsPerOver(rules.ballsPerOver);
-              setShowEditSheet(true);
-            }}
-          >
-            Edit
-          </Button>
-          <Button variant="ghost" size="sm" className="text-white/95 hover:bg-white/10" asChild>
+          {canEditMatch && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white font-medium bg-white/20 hover:bg-white/30 border border-white/30"
+              onClick={() => {
+                setEditOversPerInnings(rules.oversPerInnings);
+                setEditBallsPerOver(rules.ballsPerOver);
+                setShowEditSheet(true);
+              }}
+            >
+              Edit
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" className="text-white font-medium bg-white/20 hover:bg-white/30 border border-white/30" asChild>
             <Link href={`/matches/${matchId}/scorecard`}>Scorecard</Link>
           </Button>
         </div>

@@ -144,9 +144,36 @@ export default function PlayersPage() {
           </Button>
         </div>
         {loading ? (
-          <div className="flex justify-center py-12">
-            <span className="text-muted-foreground">Loading...</span>
-          </div>
+          <Card className="border-0 shadow-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/50">
+                    <th className="text-left py-3 px-4 font-semibold text-foreground">Full name</th>
+                    <th className="text-left py-3 px-4 font-semibold text-foreground">Short name</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">Matches</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">Runs</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">SR</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">Wickets</th>
+                    <th className="text-left py-3 px-4 font-semibold text-foreground hidden sm:table-cell">Email</th>
+                    <th className="text-right py-3 px-4 font-semibold text-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-border/80">
+                    <td className="py-3 px-4 text-muted-foreground">Loading…</td>
+                    <td className="py-3 px-4 text-muted-foreground">Loading…</td>
+                    <td className="py-3 px-4 text-right text-muted-foreground">Loading…</td>
+                    <td className="py-3 px-4 text-right text-muted-foreground">Loading…</td>
+                    <td className="py-3 px-4 text-right text-muted-foreground">Loading…</td>
+                    <td className="py-3 px-4 text-right text-muted-foreground">Loading…</td>
+                    <td className="py-3 px-4 text-muted-foreground hidden sm:table-cell">Loading…</td>
+                    <td className="py-3 px-4 text-right text-muted-foreground">—</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
         ) : players.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center">

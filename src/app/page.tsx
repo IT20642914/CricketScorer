@@ -1,16 +1,58 @@
 "use client";
 
+import { useState, useCallback, useEffect, Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { useSession, signIn } from "next-auth/react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useSession, signIn, signOut } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 
-export default function HomePage() {
+interface PlayerStatsResponse {
+  matchesPlayed: number;
+  batting: { runs: number; balls: number; innings: number; dismissals: number; average: number | null; strikeRate: number | null; fours: number; sixes: number; fifties: number; hundreds: number };
+  bowling: { wickets: number; runsConceded: number; balls: number; economy: number | null; average: number | null };
+  runsPerInnings: number[];
+}
+
+function HomeContent() {
   const { data: session, status } = useSession();
   const searchParams = useSearchParams();
   const error = searchParams.get("error");
+  const callbackUrl = searchParams.get("callbackUrl") || "/";
+  const [showDebug, setShowDebug] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
+  const [showProfileSheet, setShowProfileSheet] = useState(false);
+  const [profileStats, setProfileStats] = useState<PlayerStatsResponse | null>(null);
+  const [profileStatsLoading, setProfileStatsLoading] = useState(false);
+
+  const playerId = (session?.user as { playerId?: string } | undefined)?.playerId;
+
+  const handleAvatarError = useCallback(() => setAvatarError(true), []);
+
+  useEffect(() => {
+    if (!showProfileSheet || !playerId) {
+      setProfileStats(null);
+      return;
+    }
+    setProfileStatsLoading(true);
+    fetch(`/api/players/${playerId}/stats`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.matchesPlayed !== undefined) setProfileStats(data);
+        else setProfileStats(null);
+      })
+      .catch(() => setProfileStats(null))
+      .finally(() => setProfileStatsLoading(false));
+  }, [showProfileSheet, playerId]);
+
+  // Logger: see session.user in browser console (what the client gets)
+  useEffect(() => {
+    if (session?.user) {
+      console.log("[NextAuth] client – session.user:", session.user);
+    }
+  }, [session?.user]);
 
   if (status === "loading") {
     return (
@@ -42,7 +84,7 @@ export default function HomePage() {
             )}
 
             <Button
-              onClick={() => signIn("google", { callbackUrl: "/" })}
+              onClick={() => signIn("google", { callbackUrl })}
               className="w-full mb-4 bg-white text-gray-700 border border-gray-300 hover:bg-gray-50"
               size="lg"
             >
@@ -71,7 +113,7 @@ export default function HomePage() {
   }
   return (
     <div className="min-h-screen bg-cricket-cream">
-      <header className="page-header flex items-center justify-center gap-3">
+      <header className="page-header flex items-center justify-between gap-3">
         <Link href="/" className="flex items-center gap-3 shrink-0">
           <Image
             src="/logo.jpeg"
@@ -82,7 +124,64 @@ export default function HomePage() {
           />
           <h1 className="text-xl font-bold tracking-tight">Cricket Scoring</h1>
         </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowProfileSheet(true)}
+            className="flex items-center gap-2 rounded-lg hover:bg-white/10 p-1 -m-1 transition-colors"
+          >
+            {session.user?.image && !avatarError ? (
+              <img
+                src={session.user?.image ?? ""}
+                alt={session.user?.name || "User"}
+                width={32}
+                height={32}
+                className="rounded-full border-2 border-white/30 w-8 h-8 object-cover"
+                referrerPolicy="no-referrer"
+                onError={handleAvatarError}
+              />
+            ) : (
+              <span className="flex items-center justify-center w-8 h-8 rounded-full border-2 border-white/30 bg-white/20 text-white text-xs font-semibold">
+                {session.user?.name?.slice(0, 2).toUpperCase() ?? "?"}
+              </span>
+            )}
+            <span className="text-sm font-medium text-white/95 max-w-[120px] truncate hidden sm:inline">
+              {session.user?.name}
+            </span>
+          </button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-white/95 hover:bg-white/10"
+            onClick={() => signOut()}
+          >
+            Sign out
+          </Button>
+        </div>
       </header>
+      {/* Debug: show session values so you can see what we get (e.g. user.image) */}
+      <div className="px-4 max-w-lg mx-auto">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground text-xs"
+          onClick={() => setShowDebug((d) => !d)}
+        >
+          {showDebug ? "Hide" : "Show"} session debug
+        </Button>
+        {showDebug && session && (
+          <Card className="mt-2 p-3 overflow-auto max-h-64">
+            <p className="text-xs font-medium text-muted-foreground mb-1">session.user (what we get):</p>
+            <pre className="text-xs bg-muted/50 p-2 rounded whitespace-pre-wrap break-all">
+              {JSON.stringify(session.user, null, 2)}
+            </pre>
+            <p className="text-xs text-muted-foreground mt-2">
+              image URL: {session.user?.image ?? "(empty)"}
+            </p>
+          </Card>
+        )}
+      </div>
       <main className="p-4 max-w-lg mx-auto">
         <div className="space-y-3">
           <Card className="border-0 shadow-card overflow-hidden">
@@ -141,6 +240,100 @@ export default function HomePage() {
           </div>
         </nav>
       </main>
+
+      {/* My profile sheet – open when clicking name */}
+      <Sheet open={showProfileSheet} onOpenChange={setShowProfileSheet}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>My profile</SheetTitle>
+          </SheetHeader>
+          <div className="mt-6 space-y-6">
+            {/* Profile */}
+            <div className="flex flex-col items-center text-center">
+              {session.user?.image && !avatarError ? (
+                <img
+                  src={session.user?.image ?? ""}
+                  alt={session.user?.name || "User"}
+                  width={80}
+                  height={80}
+                  className="rounded-full border-2 border-border object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <span className="flex items-center justify-center w-20 h-20 rounded-full border-2 border-border bg-muted text-2xl font-semibold text-muted-foreground">
+                  {session.user?.name?.slice(0, 2).toUpperCase() ?? "?"}
+                </span>
+              )}
+              <h2 className="mt-3 text-xl font-semibold text-foreground">{session.user?.name}</h2>
+              {session.user?.email && (
+                <p className="text-sm text-muted-foreground">{session.user.email}</p>
+              )}
+            </div>
+
+            {/* Stats (when linked to a player) */}
+            {playerId ? (
+              <>
+                <div className="border-t pt-4">
+                  <h3 className="font-semibold text-foreground mb-3">My stats</h3>
+                  {profileStatsLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading…</p>
+                  ) : profileStats ? (
+                    <div className="space-y-4">
+                      <div className="rounded-lg bg-muted/50 p-3">
+                        <p className="text-sm font-medium text-muted-foreground">Matches played</p>
+                        <p className="text-2xl font-bold text-cricket-green">{profileStats.matchesPlayed}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg bg-muted/50 p-3">
+                          <p className="text-xs font-medium text-muted-foreground">Batting</p>
+                          <p className="text-lg font-semibold">{profileStats.batting.runs} runs</p>
+                          <p className="text-xs text-muted-foreground">
+                            Avg {profileStats.batting.average ?? "—"} · SR {profileStats.batting.strikeRate ?? "—"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {profileStats.batting.fours}×4 · {profileStats.batting.sixes}×6 · {profileStats.batting.fifties} 50s · {profileStats.batting.hundreds} 100s
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-muted/50 p-3">
+                          <p className="text-xs font-medium text-muted-foreground">Bowling</p>
+                          <p className="text-lg font-semibold">{profileStats.bowling.wickets} wkts</p>
+                          <p className="text-xs text-muted-foreground">
+                            Econ {profileStats.bowling.economy ?? "—"} · Avg {profileStats.bowling.average ?? "—"}
+                          </p>
+                        </div>
+                      </div>
+                      <Button variant="outline" className="w-full" asChild>
+                        <Link href={playerId ? `/players/${playerId}` : "/players"} onClick={() => setShowProfileSheet(false)}>
+                          View full player page →
+                        </Link>
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No stats yet. Play a match to see your stats here.</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground border-t pt-4">Your account is not linked to a player yet. Stats will appear here after your next login.</p>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-cricket-cream flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent" />
+          <p className="mt-4 text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }

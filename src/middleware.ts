@@ -8,8 +8,14 @@ export async function middleware(request: NextRequest) {
   const publicRoutes = ["/", "/login"];
   const isPublicRoute = publicRoutes.includes(pathname);
 
-  // Get token from request
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  // Get token from request (secret required by Auth.js for JWT)
+  const secret = process.env.NEXTAUTH_SECRET;
+  if (!secret && process.env.NODE_ENV === "development") {
+    console.warn("NEXTAUTH_SECRET is not set. Add it to .env for auth to work.");
+  }
+  const token = secret
+    ? await getToken({ req: request, secret })
+    : null;
 
   // Redirect to login if not authenticated (except for public routes)
   if (!isPublicRoute && !token) {
