@@ -9,6 +9,8 @@ const PlayerSchema = new Schema<IPlayer>(
     battingStyle: String,
     bowlingStyle: String,
     isKeeper: { type: Boolean, default: false },
+    role: { type: String, enum: ["player", "admin"], default: "player" },
+    createdBy: { type: String, default: null },
   },
   { timestamps: true }
 );

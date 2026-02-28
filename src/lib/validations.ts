@@ -7,6 +7,7 @@ export const playerSchema = z.object({
   battingStyle: z.enum(["RIGHT", "LEFT"]).optional(),
   bowlingStyle: z.string().optional(),
   isKeeper: z.boolean().optional(),
+  role: z.enum(["player", "admin"]).optional(),
 });
 
 export const teamSchema = z.object({

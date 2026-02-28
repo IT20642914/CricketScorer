@@ -16,6 +16,7 @@ export function AuthButtons() {
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
           {session.user.image && (
+            // eslint-disable-next-line @next/next/no-img-element -- avatar from provider, dynamic URL
             <img
               src={session.user.image}
               alt={session.user.name || "User"}

@@ -6,12 +6,31 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
+
+function sameEmail(a?: string | null, b?: string): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function canEditPlayer(
+  session: { user?: { playerId?: string; role?: string; email?: string | null } } | null,
+  playerId: string,
+  player?: { createdBy?: string; email?: string } | null
+): boolean {
+  if (!session?.user) return false;
+  if (session.user.role === "admin") return true;
+  if (session.user.playerId === playerId) return true;
+  if (sameEmail(session.user.email, player?.email)) return true;
+  if (player?.createdBy && session.user.playerId && player.createdBy === session.user.playerId) return true;
+  return false;
+}
 
 const schema = z.object({
   fullName: z.string().min(1),
@@ -26,19 +45,35 @@ export default function EditPlayerPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
+  const { data: session, status: sessionStatus } = useSession();
   const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
   const [error, setError] = useState("");
   const { register, handleSubmit, control, reset, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
   });
 
   useEffect(() => {
+    if (sessionStatus === "loading") return;
+    if (!session?.user) {
+      setLoading(false);
+      return;
+    }
     fetch(`/api/players/${id}`)
       .then((r) => {
-        if (r.status === 404) router.replace("/players");
+        if (r.status === 404) {
+          router.replace("/players");
+          return null;
+        }
         return r.json();
       })
       .then((data) => {
+        if (!data) return;
+        if (!canEditPlayer(session, id, data)) {
+          setForbidden(true);
+          setLoading(false);
+          return;
+        }
         reset({
           fullName: data.fullName,
           shortName: data.shortName ?? "",
@@ -48,7 +83,7 @@ export default function EditPlayerPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [id, reset, router]);
+  }, [id, reset, router, session, sessionStatus]);
 
   async function onSubmit(data: FormData) {
     setError("");
@@ -69,6 +104,31 @@ export default function EditPlayerPage() {
       <div className="min-h-screen flex items-center justify-center gap-2">
         <Spinner className="h-5 w-5 border-cricket-green border-t-transparent text-cricket-green" />
         <span className="text-muted-foreground">Loading…</span>
+      </div>
+    );
+  }
+
+  if (forbidden) {
+    return (
+      <div className="min-h-screen">
+        <header className="page-header">
+          <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 -ml-2" asChild>
+            <Link href="/players">←</Link>
+          </Button>
+          <h1 className="text-xl font-bold flex-1 text-center">Edit Player</h1>
+          <div className="w-10" />
+        </header>
+        <main className="p-4 max-w-lg mx-auto">
+          <Card className="border-amber-200 bg-amber-50/50">
+            <CardContent className="p-6 text-center">
+              <p className="font-medium text-amber-900 mb-2">You can only edit your own player profile.</p>
+              <p className="text-sm text-amber-800 mb-4">This player is linked to another account. Admins can edit any player.</p>
+              <Button asChild className="rounded-xl">
+                <Link href="/players">Back to Players</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
       </div>
     );
   }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -29,6 +30,7 @@ interface Player {
   shortName?: string;
   email?: string;
   isKeeper?: boolean;
+  createdBy?: string;
   stats?: {
     matchesPlayed: number;
     runs: number;
@@ -56,7 +58,25 @@ async function fetchPlayers(search: string): Promise<Player[]> {
   return Array.isArray(data) ? data : [];
 }
 
+function sameEmail(a?: string | null, b?: string): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function canEditPlayer(
+  session: { user?: { playerId?: string; role?: string; email?: string | null } } | null,
+  player: { _id: string; createdBy?: string; email?: string }
+): boolean {
+  if (!session?.user) return false;
+  if (session.user.role === "admin") return true;
+  if (session.user.playerId === player._id) return true;
+  if (sameEmail(session.user.email, player.email)) return true;
+  if (player.createdBy && session.user.playerId && player.createdBy === session.user.playerId) return true;
+  return false;
+}
+
 export default function PlayersPage() {
+  const { data: session } = useSession();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -226,17 +246,23 @@ export default function PlayersPage() {
                         <td className="py-3 sm:py-4 px-3 sm:px-4 text-right tabular-nums">{stats ? stats.wickets : "—"}</td>
                         <td className="py-3 sm:py-4 px-3 sm:px-4 text-right">
                           <div className="flex items-center justify-end gap-1 flex-wrap">
-                            <Button variant="ghost" size="sm" className="h-9 min-h-[36px] rounded-lg text-muted-foreground" asChild>
-                              <Link href={`/players/${p._id}/edit`}>Edit</Link>
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-9 min-h-[36px] rounded-lg text-destructive hover:text-destructive"
-                              onClick={() => setRemoveId(p._id)}
-                            >
-                              Remove
-                            </Button>
+                            {canEditPlayer(session, p) ? (
+                              <>
+                                <Button variant="ghost" size="sm" className="h-9 min-h-[36px] rounded-lg text-muted-foreground" asChild>
+                                  <Link href={`/players/${p._id}/edit`}>Edit</Link>
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-9 min-h-[36px] rounded-lg text-destructive hover:text-destructive"
+                                  onClick={() => setRemoveId(p._id)}
+                                >
+                                  Remove
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
                           </div>
                         </td>
                       </tr>
