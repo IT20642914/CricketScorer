@@ -70,6 +70,7 @@ const authConfig = {
             console.log("[NextAuth] Matched existing player by email:", { email: profile.email, playerId: player._id });
           }
           token.playerId = String(player._id);
+          if (player.role === "admin") token.role = "admin";
         } catch (err) {
           console.error("[NextAuth] Failed to find/create player by email:", err);
         }
@@ -93,6 +94,9 @@ const authConfig = {
         // Player linked to this account (by email); created on first login if missing
         if (token.playerId) {
           session.user.playerId = token.playerId;
+        }
+        if (token.role === "admin") {
+          session.user.role = "admin";
         }
       }
       // Logger: see what session.user we send to the client

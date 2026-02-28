@@ -3,6 +3,8 @@
 export type BattingStyle = "RIGHT" | "LEFT";
 export type BowlingStyle = "RIGHT_ARM_FAST" | "RIGHT_ARM_MEDIUM" | "RIGHT_ARM_OFF" | "RIGHT_ARM_LEG" | "LEFT_ARM_FAST" | "LEFT_ARM_ORTHODOX" | "LEFT_ARM_CHINAMAN" | "OTHER";
 
+export type PlayerRole = "player" | "admin";
+
 export interface Player {
   _id: string;
   fullName: string;
@@ -12,6 +14,8 @@ export interface Player {
   battingStyle?: BattingStyle;
   bowlingStyle?: BowlingStyle;
   isKeeper?: boolean;
+  /** Admin can edit any player; default is "player". */
+  role?: PlayerRole;
 }
 
 export interface Team {
