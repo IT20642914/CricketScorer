@@ -109,6 +109,7 @@ function HomeContent() {
             className="flex items-center gap-2 rounded-xl hover:bg-white/10 active:bg-white/20 p-2 -m-1 transition-colors min-h-[44px] min-w-[44px] sm:min-w-0"
           >
             {session.user?.image && !avatarError ? (
+              // eslint-disable-next-line @next/next/no-img-element -- avatar URL from provider, dynamic
               <img
                 src={session.user?.image ?? ""}
                 alt={session.user?.name || "User"}
@@ -237,6 +238,7 @@ function HomeContent() {
             {/* Profile */}
             <div className="flex flex-col items-center text-center">
               {session.user?.image && !avatarError ? (
+                // eslint-disable-next-line @next/next/no-img-element -- profile image from provider
                 <img
                   src={session.user?.image ?? ""}
                   alt={session.user?.name || "User"}
