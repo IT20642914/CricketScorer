@@ -12,17 +12,34 @@ export async function middleware(request: NextRequest) {
 
   // Get token from request (secret required by Auth.js for JWT)
   const secret = process.env.NEXTAUTH_SECRET;
+  const hasSecret = !!secret;
   if (!secret && process.env.NODE_ENV === "development") {
     console.warn(
-      "NEXTAUTH_SECRET is not set. Add it to .env for auth to work.",
+      "[middleware] NEXTAUTH_SECRET is not set. Add it to .env for auth to work.",
     );
   }
   const token = secret ? await getToken({ req: request, secret }) : null;
+
+  // Auth cookie names used by NextAuth (v5: authjs.session-token or next-auth.session-token)
+  const cookieNames = ["authjs.session-token", "next-auth.session-token", "__Secure-authjs.session-token", "__Secure-next-auth.session-token"];
+  const authCookiePresent = cookieNames.some((name) => request.cookies.get(name)?.value);
+
+  // Debug: check Vercel logs or terminal to see why redirects happen
+  console.log("[middleware]", {
+    pathname,
+    isPublicRoute,
+    hasSecret,
+    hasToken: !!token,
+    authCookiePresent,
+    tokenSub: token?.sub ?? null,
+    willRedirectToLogin: !isPublicRoute && !token,
+  });
 
   // Redirect to login if not authenticated (except for public routes)
   if (!isPublicRoute && !token) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
+    console.log("[middleware] Redirecting to login, callbackUrl:", pathname);
     return Response.redirect(loginUrl);
   }
 
