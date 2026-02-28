@@ -1,6 +1,8 @@
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
+// On Vercel: set NEXTAUTH_URL=https://your-app.vercel.app and NEXTAUTH_SECRET so the JWT cookie is valid and middleware can recognize logged-in users.
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
@@ -19,15 +21,16 @@ export async function middleware(request: NextRequest) {
 
   // Redirect to login if not authenticated (except for public routes)
   if (!isPublicRoute && !token) {
-    const loginUrl = new URL("/", request.url);
+    const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return Response.redirect(loginUrl);
   }
 
-  // Redirect to home if logged-in user tries to access login
+  // Redirect to callbackUrl (or home) if logged-in user visits /login
   if (pathname === "/login" && token) {
     const callbackUrl = request.nextUrl.searchParams.get("callbackUrl") || "/";
-    return Response.redirect(new URL(callbackUrl, request.url));
+    const target = callbackUrl.startsWith("/") ? new URL(callbackUrl, request.url) : new URL("/", request.url);
+    return Response.redirect(target);
   }
 
   return null;

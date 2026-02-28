@@ -19,15 +19,17 @@ const authConfig = {
   },
   callbacks: {
     async redirect({ url, baseUrl }: any) {
-      // After sign-in, redirect to home page
       if (url.startsWith("/api/auth/signin")) {
         return baseUrl;
       }
-      // If callback URL is provided, use it
+      // Allow same-origin callback URLs (e.g. /matches)
       if (url.startsWith(baseUrl)) {
         return url;
       }
-      // Default to home page
+      // Relative path from client (e.g. "/matches") – resolve against baseUrl
+      if (typeof url === "string" && url.startsWith("/")) {
+        return `${baseUrl.replace(/\/$/, "")}${url}`;
+      }
       return baseUrl;
     },
     async jwt({ token, user, profile }: any) {

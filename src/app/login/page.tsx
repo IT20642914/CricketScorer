@@ -11,14 +11,15 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const { data: session } = useSession();
   const error = searchParams.get("error");
+  const callbackUrl = searchParams.get("callbackUrl") || "/";
 
   useEffect(() => {
     if (session?.user) {
-      router.push("/");
+      router.push(callbackUrl.startsWith("/") ? callbackUrl : "/");
     }
-  }, [session, router]);
+  }, [session, router, callbackUrl]);
 
-  return <LoginScreen error={error} callbackUrl="/" />;
+  return <LoginScreen error={error} callbackUrl={callbackUrl} />;
 }
 
 export default function LoginPage() {
