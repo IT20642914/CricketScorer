@@ -52,12 +52,13 @@ const authConfig = {
         token.sub = user.id;
       }
 
-      // On sign-in: ensure a Player exists for this user (matched by email), create if not
-      if (profile?.email) {
+      const email = profile?.email ?? token.email;
+      if (email) {
         try {
           await connectDB();
-          let player = await PlayerModel.findOne({ email: profile.email }).lean();
-          if (!player) {
+          let player = await PlayerModel.findOne({ email }).lean();
+          if (!player && profile?.email) {
+            // Only create on sign-in (when we have profile)
             const mongoose = await import("mongoose");
             const newPlayer = await PlayerModel.create({
               fullName: profile.name || profile.email || "Player",
@@ -66,11 +67,13 @@ const authConfig = {
             });
             player = newPlayer.toObject();
             console.log("[NextAuth] Created new player for logged-in user:", { email: profile.email, playerId: player._id });
-          } else {
+          } else if (player && profile?.email) {
             console.log("[NextAuth] Matched existing player by email:", { email: profile.email, playerId: player._id });
           }
-          token.playerId = String(player._id);
-          if (player.role === "admin") token.role = "admin";
+          if (player) {
+            token.playerId = String(player._id);
+            token.role = player.role === "admin" ? "admin" : undefined;
+          }
         } catch (err) {
           console.error("[NextAuth] Failed to find/create player by email:", err);
         }
@@ -95,9 +98,8 @@ const authConfig = {
         if (token.playerId) {
           session.user.playerId = token.playerId;
         }
-        if (token.role === "admin") {
-          session.user.role = "admin";
-        }
+        // Use only our app role from Player (ignore provider fields like "Customer")
+        session.user.role = token.role === "admin" ? "admin" : undefined;
       }
       // Logger: see what session.user we send to the client
       console.log("[NextAuth] session callback – session.user:", JSON.stringify(session?.user ?? null, null, 2));
