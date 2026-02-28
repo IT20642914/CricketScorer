@@ -24,7 +24,7 @@ function debugHeader(
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
-  const publicRoutes = ["/", "/login"];
+  const publicRoutes = [ "/login"];
   const isPublicRoute = publicRoutes.includes(pathname);
 
   const secret = process.env.NEXTAUTH_SECRET;
