@@ -14,13 +14,22 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
 
+function sameEmail(a?: string | null, b?: string): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 function canEditPlayer(
-  session: { user?: { playerId?: string; role?: string } } | null,
-  playerId: string
+  session: { user?: { playerId?: string; role?: string; email?: string | null } } | null,
+  playerId: string,
+  player?: { createdBy?: string; email?: string } | null
 ): boolean {
   if (!session?.user) return false;
   if (session.user.role === "admin") return true;
-  return session.user.playerId === playerId;
+  if (session.user.playerId === playerId) return true;
+  if (sameEmail(session.user.email, player?.email)) return true;
+  if (player?.createdBy && session.user.playerId && player.createdBy === session.user.playerId) return true;
+  return false;
 }
 
 const schema = z.object({
@@ -60,7 +69,7 @@ export default function EditPlayerPage() {
       })
       .then((data) => {
         if (!data) return;
-        if (!canEditPlayer(session, id)) {
+        if (!canEditPlayer(session, id, data)) {
           setForbidden(true);
           setLoading(false);
           return;

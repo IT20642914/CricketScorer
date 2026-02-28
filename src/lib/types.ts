@@ -16,6 +16,8 @@ export interface Player {
   isKeeper?: boolean;
   /** Admin can edit any player; default is "player". */
   role?: PlayerRole;
+  /** Player ID of the user who created this record (so they can edit it). Set when creating via API. */
+  createdBy?: string;
 }
 
 export interface Team {

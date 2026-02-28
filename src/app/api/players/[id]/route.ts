@@ -4,11 +4,23 @@ import { connectDB } from "@/lib/db";
 import { PlayerModel } from "@/lib/models";
 import { playerSchema } from "@/lib/validations";
 
-function canEditPlayer(session: { user?: { playerId?: string; role?: string } } | null, playerId: string): boolean {
+function sameEmail(a?: string | null, b?: string): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function canEditPlayer(
+  session: { user?: { playerId?: string; role?: string; email?: string | null } } | null,
+  playerId: string,
+  player?: { createdBy?: string; email?: string } | null
+): boolean {
   if (!session?.user) return false;
-  const { playerId: myPlayerId, role } = session.user;
+  const { playerId: myPlayerId, role, email: sessionEmail } = session.user;
   if (role === "admin") return true;
-  return myPlayerId === playerId;
+  if (myPlayerId === playerId) return true;
+  if (sameEmail(sessionEmail, player?.email)) return true;
+  if (player?.createdBy && myPlayerId && player.createdBy === myPlayerId) return true;
+  return false;
 }
 
 export async function GET(
@@ -37,15 +49,17 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
-    if (!canEditPlayer(session, id)) {
-      return NextResponse.json({ error: "You can only edit your own player profile, or need admin role" }, { status: 403 });
+    await connectDB();
+    const existing = await PlayerModel.findById(id).select("createdBy email").lean();
+    if (!existing) return NextResponse.json({ error: "Player not found" }, { status: 404 });
+    if (!canEditPlayer(session, id, existing)) {
+      return NextResponse.json({ error: "You can only edit your own profile, players you created, or need admin role" }, { status: 403 });
     }
     const body = await request.json();
     const parsed = playerSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
-    await connectDB();
     const data = { ...parsed.data } as Record<string, unknown>;
     if (session.user.role !== "admin" && "role" in data) {
       delete data.role;
@@ -83,10 +97,12 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     const { id } = await params;
-    if (!canEditPlayer(session, id)) {
-      return NextResponse.json({ error: "You can only remove your own player profile, or need admin role" }, { status: 403 });
-    }
     await connectDB();
+    const existing = await PlayerModel.findById(id).select("createdBy email").lean();
+    if (!existing) return NextResponse.json({ error: "Player not found" }, { status: 404 });
+    if (!canEditPlayer(session, id, existing)) {
+      return NextResponse.json({ error: "You can only remove your own profile, players you created, or need admin role" }, { status: 403 });
+    }
     const result = await PlayerModel.findByIdAndDelete(id);
     if (!result) return NextResponse.json({ error: "Player not found" }, { status: 404 });
     return NextResponse.json({ ok: true });

@@ -30,6 +30,7 @@ interface Player {
   shortName?: string;
   email?: string;
   isKeeper?: boolean;
+  createdBy?: string;
   stats?: {
     matchesPlayed: number;
     runs: number;
@@ -57,13 +58,21 @@ async function fetchPlayers(search: string): Promise<Player[]> {
   return Array.isArray(data) ? data : [];
 }
 
+function sameEmail(a?: string | null, b?: string): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 function canEditPlayer(
-  session: { user?: { playerId?: string; role?: string } } | null,
-  playerId: string
+  session: { user?: { playerId?: string; role?: string; email?: string | null } } | null,
+  player: { _id: string; createdBy?: string; email?: string }
 ): boolean {
   if (!session?.user) return false;
   if (session.user.role === "admin") return true;
-  return session.user.playerId === playerId;
+  if (session.user.playerId === player._id) return true;
+  if (sameEmail(session.user.email, player.email)) return true;
+  if (player.createdBy && session.user.playerId && player.createdBy === session.user.playerId) return true;
+  return false;
 }
 
 export default function PlayersPage() {
@@ -237,7 +246,7 @@ export default function PlayersPage() {
                         <td className="py-3 sm:py-4 px-3 sm:px-4 text-right tabular-nums">{stats ? stats.wickets : "—"}</td>
                         <td className="py-3 sm:py-4 px-3 sm:px-4 text-right">
                           <div className="flex items-center justify-end gap-1 flex-wrap">
-                            {canEditPlayer(session, p._id) ? (
+                            {canEditPlayer(session, p) ? (
                               <>
                                 <Button variant="ghost" size="sm" className="h-9 min-h-[36px] rounded-lg text-muted-foreground" asChild>
                                   <Link href={`/players/${p._id}/edit`}>Edit</Link>

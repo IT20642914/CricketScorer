@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { connectDB } from "@/lib/db";
 import { PlayerModel, MatchModel } from "@/lib/models";
 import { playerSchema } from "@/lib/validations";
@@ -51,6 +52,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const session = await auth();
+    if (!session?.user?.playerId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const body = await request.json();
     const parsed = playerSchema.safeParse(body);
     if (!parsed.success) {
@@ -60,6 +65,7 @@ export async function POST(request: Request) {
     const player = await PlayerModel.create({
       ...parsed.data,
       _id: new (await import("mongoose")).Types.ObjectId().toString(),
+      createdBy: session.user.playerId,
     });
     return NextResponse.json(player.toObject());
   } catch (e) {
