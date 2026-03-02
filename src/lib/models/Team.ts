@@ -6,6 +6,7 @@ const TeamSchema = new Schema<ITeam>(
     teamName: { type: String, required: true },
     playerIds: [{ type: String, ref: "Player" }],
     defaultPlayingXIIds: [String],
+    createdBy: { type: String, default: null },
   },
   { timestamps: true }
 );

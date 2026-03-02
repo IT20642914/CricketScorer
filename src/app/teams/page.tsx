@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,10 +23,21 @@ import { queryKeys } from "@/lib/query-keys";
 import { TableSkeleton } from "@/components/loaders/table-skeleton";
 import { Spinner } from "@/components/ui/spinner";
 
+function canEditTeam(
+  session: { user?: { playerId?: string; role?: string } } | null,
+  team: { createdBy?: string }
+): boolean {
+  if (!session?.user) return false;
+  if (session.user.role === "admin") return true;
+  if (team.createdBy && session.user.playerId && team.createdBy === session.user.playerId) return true;
+  return false;
+}
+
 interface Team {
   _id: string;
   teamName: string;
   playerIds: string[];
+  createdBy?: string;
 }
 
 interface TeamStats {
@@ -69,6 +81,7 @@ async function fetchTeamsWithStats(): Promise<{ teams: Team[]; statsMap: Record<
 }
 
 export default function TeamsPage() {
+  const { data: session } = useSession();
   const queryClient = useQueryClient();
   const teamsQuery = useQuery({
     queryKey: queryKeys.teamsWithStats(),
@@ -88,6 +101,8 @@ export default function TeamsPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [playerSearch, setPlayerSearch] = useState("");
   const [playerDropdownOpen, setPlayerDropdownOpen] = useState(false);
+  const [removeId, setRemoveId] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
     if (showAddDialog) {
@@ -149,6 +164,20 @@ export default function TeamsPage() {
     setPlayerDropdownOpen(false);
     queryClient.invalidateQueries({ queryKey: queryKeys.teams() });
     queryClient.invalidateQueries({ queryKey: queryKeys.teamsWithStats() });
+  }
+
+  async function removeTeam(id: string) {
+    setRemoving(true);
+    try {
+      const res = await fetch(`/api/teams/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setRemoveId(null);
+        queryClient.invalidateQueries({ queryKey: queryKeys.teams() });
+        queryClient.invalidateQueries({ queryKey: queryKeys.teamsWithStats() });
+      }
+    } finally {
+      setRemoving(false);
+    }
   }
 
   function handleCloseAddDialog(open: boolean) {
@@ -230,11 +259,13 @@ export default function TeamsPage() {
                     <th className="text-right py-3 sm:py-4 px-3 sm:px-4 font-semibold text-foreground">Players</th>
                     <th className="text-right py-3 sm:py-4 px-3 sm:px-4 font-semibold text-foreground">Matches</th>
                     <th className="text-right py-3 sm:py-4 px-3 sm:px-4 font-semibold text-foreground">Wins</th>
+                    <th className="text-right py-3 sm:py-4 px-3 sm:px-4 font-semibold text-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {teams.map((t) => {
                     const stats = statsMap[t._id];
+                    const editable = canEditTeam(session, t);
                     return (
                       <tr key={t._id} className="border-b border-border/80 hover:bg-muted/30 transition-colors">
                         <td className="py-3 sm:py-4 px-3 sm:px-4">
@@ -245,6 +276,27 @@ export default function TeamsPage() {
                         <td className="py-3 sm:py-4 px-3 sm:px-4 text-right tabular-nums">{t.playerIds?.length ?? 0}</td>
                         <td className="py-3 sm:py-4 px-3 sm:px-4 text-right tabular-nums">{statsLoading && !stats ? "…" : (stats ? stats.matchCount : "—")}</td>
                         <td className="py-3 sm:py-4 px-3 sm:px-4 text-right tabular-nums">{statsLoading && !stats ? "…" : (stats ? stats.winCount : "—")}</td>
+                        <td className="py-3 sm:py-4 px-3 sm:px-4 text-right">
+                          <div className="flex items-center justify-end gap-1 flex-wrap">
+                            {editable ? (
+                              <>
+                                <Button variant="ghost" size="sm" className="h-9 min-h-[36px] rounded-lg text-muted-foreground" asChild>
+                                  <Link href={`/teams/${t._id}`}>Edit</Link>
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-9 min-h-[36px] rounded-lg text-destructive hover:text-destructive"
+                                  onClick={() => setRemoveId(t._id)}
+                                >
+                                  Remove
+                                </Button>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -254,6 +306,29 @@ export default function TeamsPage() {
           </Card>
         )}
       </main>
+
+      <Dialog open={!!removeId} onOpenChange={(open) => !open && setRemoveId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove team</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove this team? This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveId(null)} disabled={removing}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => removeId && removeTeam(removeId)}
+              disabled={removing}
+            >
+              {removing ? "Removing…" : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showAddDialog} onOpenChange={handleCloseAddDialog}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
