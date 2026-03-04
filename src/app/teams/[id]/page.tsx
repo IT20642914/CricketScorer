@@ -71,7 +71,7 @@ export default function EditTeamPage() {
     ]).then(([t, p, s]) => {
       if (t) {
         setTeam(t);
-        if (sessionStatus !== "loading") setForbidden(!canEditTeam(session, t));
+        setForbidden(!canEditTeam(session, t));
       }
       if (Array.isArray(p)) setPlayers(p);
       if (s && typeof s.matchCount === "number") setStats(s);
