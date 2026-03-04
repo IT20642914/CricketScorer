@@ -6,11 +6,22 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Label } from "@/components/ui/label";
+
+function canEditTeam(
+  session: { user?: { playerId?: string; role?: string } } | null,
+  team: { createdBy?: string } | null
+): boolean {
+  if (!session?.user) return false;
+  if (session.user.role === "admin") return true;
+  if (team?.createdBy && session.user.playerId && team.createdBy === session.user.playerId) return true;
+  return false;
+}
 
 interface Player {
   _id: string;
@@ -21,6 +32,7 @@ interface Team {
   _id: string;
   teamName: string;
   playerIds: string[];
+  createdBy?: string;
 }
 
 const schema = z.object({
@@ -34,13 +46,16 @@ export default function EditTeamPage() {
   const params = useParams();
   const id = params.id as string;
   const router = useRouter();
+  const { data: session, status: sessionStatus } = useSession();
   const [team, setTeam] = useState<Team | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [stats, setStats] = useState<{ matchCount: number; winCount: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [forbidden, setForbidden] = useState(false);
   const [error, setError] = useState("");
   const [playerSearch, setPlayerSearch] = useState("");
   const [playerDropdownOpen, setPlayerDropdownOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { register, handleSubmit, setValue, watch } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { teamName: "", playerIds: [] },
@@ -48,17 +63,21 @@ export default function EditTeamPage() {
   const playerIds = watch("playerIds") ?? [];
 
   useEffect(() => {
+    if (sessionStatus === "loading") return;
     Promise.all([
       fetch(`/api/teams/${id}`).then((r) => (r.ok ? r.json() : null)),
       fetch("/api/players?light=1").then((r) => r.json()),
       fetch(`/api/teams/${id}/stats`).then((r) => (r.ok ? r.json() : null)),
     ]).then(([t, p, s]) => {
-      if (t) setTeam(t);
+      if (t) {
+        setTeam(t);
+        if (sessionStatus !== "loading") setForbidden(!canEditTeam(session, t));
+      }
       if (Array.isArray(p)) setPlayers(p);
       if (s && typeof s.matchCount === "number") setStats(s);
       setLoading(false);
     });
-  }, [id]);
+  }, [id, session, sessionStatus]);
 
   useEffect(() => {
     if (team) {
@@ -95,11 +114,47 @@ export default function EditTeamPage() {
     router.push("/teams");
   }
 
+  async function deleteTeam() {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/teams/${id}`, { method: "DELETE" });
+      if (res.ok) router.push("/teams");
+      else setError("Failed to delete team");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (loading || !team) {
     return (
       <div className="min-h-screen flex items-center justify-center gap-2">
         <Spinner className="h-5 w-5 border-cricket-green border-t-transparent text-cricket-green" />
         <span className="text-muted-foreground">Loading…</span>
+      </div>
+    );
+  }
+
+  if (forbidden) {
+    return (
+      <div className="min-h-screen">
+        <header className="page-header">
+          <Button variant="ghost" size="icon" className="text-white hover:bg-white/10 -ml-2" asChild>
+            <Link href="/teams">←</Link>
+          </Button>
+          <h1 className="text-xl font-bold flex-1 text-center">Edit Team</h1>
+          <div className="w-10" />
+        </header>
+        <main className="p-4 max-w-lg mx-auto">
+          <Card className="border-amber-200 bg-amber-50/50">
+            <CardContent className="p-6 text-center">
+              <p className="font-medium text-amber-900 mb-2">You can only edit teams you created.</p>
+              <p className="text-sm text-amber-800 mb-4">Admins can edit any team.</p>
+              <Button asChild className="rounded-xl">
+                <Link href="/teams">Back to Teams</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
       </div>
     );
   }
@@ -209,7 +264,18 @@ export default function EditTeamPage() {
               {error && (
                 <p className="text-sm text-destructive bg-destructive/10 py-2 px-3 rounded-md">{error}</p>
               )}
-              <Button type="submit" className="w-full h-11">Save</Button>
+              <div className="flex flex-col gap-2">
+                <Button type="submit" className="w-full h-11">Save</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-11 text-destructive border-destructive/50 hover:bg-destructive/10"
+                  onClick={deleteTeam}
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting…" : "Delete team"}
+                </Button>
+              </div>
             </form>
           </CardContent>
         </Card>

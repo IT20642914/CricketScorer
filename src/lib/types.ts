@@ -25,6 +25,8 @@ export interface Team {
   teamName: string;
   playerIds: string[];
   defaultPlayingXIIds?: string[];
+  /** Player ID of the user who created this team (admin or creator can edit). */
+  createdBy?: string;
 }
 
 export interface RulesConfig {
