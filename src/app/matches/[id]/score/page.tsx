@@ -73,6 +73,8 @@ export default function ScorePage() {
   const [strikerNonStrikerSwapped, setStrikerNonStrikerSwapped] = useState(false);
   /** In "Change bowler" sheet: who should be striker (so user can set striker when changing bowler). */
   const [selectedStrikerForBowlerSheet, setSelectedStrikerForBowlerSheet] = useState<string>("");
+  /** Bowler ID for "View overs" dialog (null = closed). */
+  const [viewOversBowlerId, setViewOversBowlerId] = useState<string | null>(null);
   const [wicketKind, setWicketKind] = useState<"BOWLED" | "CAUGHT" | "LBW" | "RUN_OUT" | "STUMPED" | "HIT_WICKET" | "RETIRED">("BOWLED");
   const [wicketBatterId, setWicketBatterId] = useState("");
   const [wicketStep, setWicketStep] = useState<1 | 2>(1);
@@ -142,6 +144,34 @@ export default function ScorePage() {
   const summary = currentInnings ? computeInningsSummary(events, rules, effectiveBallsPerOver) : null;
   const battingCard = currentInnings ? computeBattingCard(events, battingOrder) : [];
   const bowlingFigures = currentInnings ? computeBowlingFigures(events, rules, bowlingOrder, effectiveBallsPerOver).filter((f) => f.overs > 0 || f.balls > 0) : [];
+  /** Per bowler: list of balls they bowled (for ball-by-ball runs display). */
+  const ballsPerBowler: Record<string, BallEvent[]> = (() => {
+    const out: Record<string, BallEvent[]> = {};
+    for (const e of events) {
+      const bid = e.bowlerId;
+      if (bid) {
+        if (!out[bid]) out[bid] = [];
+        out[bid].push(e);
+      }
+    }
+    return out;
+  })();
+  /** Per bowler: balls grouped by over (each over = one line of boxes). */
+  const oversPerBowler: Record<string, BallEvent[][]> = (() => {
+    const out: Record<string, BallEvent[][]> = {};
+    for (const [bid, balls] of Object.entries(ballsPerBowler)) {
+      const byOver: Record<number, BallEvent[]> = {};
+      for (const e of balls) {
+        const o = e.overNumber ?? 0;
+        if (!byOver[o]) byOver[o] = [];
+        byOver[o].push(e);
+      }
+      out[bid] = Object.keys(byOver)
+        .sort((a, b) => Number(a) - Number(b))
+        .map((k) => byOver[Number(k)]);
+    }
+    return out;
+  })();
   const { strikerId, nonStrikerId } = currentInnings
     ? getCurrentBattersSimple(events, battingOrder, { ...rules, ballsPerOver: effectiveBallsPerOver })
     : { strikerId: "", nonStrikerId: "" };
@@ -151,13 +181,11 @@ export default function ScorePage() {
   /** Batting stats for current striker/non-striker (runs in balls). */
   const strikerStats = battingCard.find((b) => b.playerId === effectiveStrikerId);
   const nonStrikerStats = battingCard.find((b) => b.playerId === effectiveNonStrikerId);
-  /** Two batters at crease in fixed order (by batting order) so we only change S/NS tags, not names. */
-  const battersAtCreaseOrdered =
-    strikerId && nonStrikerId
-      ? [strikerId, nonStrikerId].sort((a, b) => battingOrder.indexOf(a) - battingOrder.indexOf(b))
-      : strikerId
-        ? [strikerId]
-        : [];
+  /** Two batters at crease in fixed order (by batting order). When last man batting (no partner), only striker. */
+  const hasTwoBatters = !!(strikerId && nonStrikerId && strikerId !== nonStrikerId);
+  const battersAtCreaseOrdered = [strikerId, nonStrikerId]
+    .filter((id): id is string => !!id)
+    .sort((a, b) => battingOrder.indexOf(a) - battingOrder.indexOf(b));
 
   const totalBallsBowled = summary?.totalBallsBowled ?? 0;
   const overJustFinished = totalBallsBowled > 0 && totalBallsBowled % effectiveBallsPerOver === 0;
@@ -697,7 +725,7 @@ export default function ScorePage() {
                 </span>
               );
             })}
-            {strikerId && nonStrikerId && strikerId !== nonStrikerId && (
+            {hasTwoBatters && (
               <Button
                 type="button"
                 variant="outline"
@@ -954,15 +982,44 @@ export default function ScorePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {bowlingFigures.map((f) => (
-                    <tr key={f.playerId} className="border-b border-gray-100">
-                      <td className="py-2.5 pl-4 font-medium text-gray-900">{playersMap[f.playerId] ?? f.playerId}</td>
-                      <td className="text-right py-2.5 pr-2 tabular-nums">{f.overs}.{f.balls}</td>
-                      <td className="text-right py-2.5 pr-2 tabular-nums">{f.runsConceded}</td>
-                      <td className="text-right py-2.5 pr-2 font-semibold tabular-nums">{f.wickets}</td>
-                      <td className="text-right py-2.5 pr-4 tabular-nums text-gray-600">{f.economy}</td>
-                    </tr>
-                  ))}
+                  {bowlingFigures.map((f) => {
+                    const bowlerOvers = oversPerBowler[f.playerId] ?? [];
+                    const firstOverBalls = bowlerOvers[0] ?? [];
+                    return (
+                      <tr key={f.playerId} className="border-b border-gray-100">
+                        <td className="py-2.5 pl-4">
+                          <div className="font-medium text-gray-900">{playersMap[f.playerId] ?? f.playerId}</div>
+                          {firstOverBalls.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {firstOverBalls.map((e) => (
+                                <span
+                                  key={e._id}
+                                  className="inline-flex items-center justify-center min-w-[28px] px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-900 font-medium text-xs"
+                                >
+                                  {formatBallChip(e)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {bowlerOvers.length > 0 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs mt-1 -ml-1 text-amber-700 hover:text-amber-900"
+                              onClick={() => setViewOversBowlerId(f.playerId)}
+                            >
+                              View overs
+                            </Button>
+                          )}
+                        </td>
+                        <td className="text-right py-2.5 pr-2 tabular-nums align-top">{f.overs}.{f.balls}</td>
+                        <td className="text-right py-2.5 pr-2 tabular-nums align-top">{f.runsConceded}</td>
+                        <td className="text-right py-2.5 pr-2 font-semibold tabular-nums align-top">{f.wickets}</td>
+                        <td className="text-right py-2.5 pr-4 tabular-nums text-gray-600 align-top">{f.economy}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -987,6 +1044,37 @@ export default function ScorePage() {
             )}
           </div>
           </TabsContent>
+
+      {/* View overs – expanded ball-by-ball per over for one bowler */}
+      <Dialog open={!!viewOversBowlerId} onOpenChange={(open) => !open && setViewOversBowlerId(null)}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-primary">
+              {viewOversBowlerId ? (playersMap[viewOversBowlerId] ?? viewOversBowlerId) : ""} – Overs
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            {viewOversBowlerId && (oversPerBowler[viewOversBowlerId] ?? []).map((overBalls, idx) => (
+              <div key={idx}>
+                <p className="text-xs font-medium text-gray-600 mb-1.5">Over {idx + 1}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {overBalls.map((e) => (
+                    <span
+                      key={e._id}
+                      className="inline-flex items-center justify-center min-w-[32px] px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-medium text-sm"
+                    >
+                      {formatBallChip(e)}
+                    </span>
+                  ))}
+                  <span className="text-xs text-gray-500 self-center ml-1 tabular-nums">
+                    = {overBalls.reduce((s, e) => s + runsFromBallEvent(e), 0)} runs
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
         </Tabs>
         )}
       </main>

@@ -10,6 +10,49 @@ import {
 } from "@/lib/engine";
 import type { Match, BallEvent, RulesConfig } from "@/lib/types";
 import { Spinner } from "@/components/ui/spinner";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+function formatBallChip(e: BallEvent): string {
+  const w = e.wicket ? "W" : "";
+  const ext = e.extras?.type ?? "";
+  const runsOffBat = e.runsOffBat ?? 0;
+  const extRuns = e.extras?.runs ?? 0;
+  const total = runsOffBat + extRuns;
+  if (w) return "W";
+  if (ext === "NB") return total === 0 ? "nb" : runsOffBat > 0 ? `${runsOffBat}nb (${total})` : `${total}nb`;
+  if (ext === "WD") return total === 0 ? "wd" : `${extRuns}wd (${total})`;
+  if (ext) return total > 0 ? `${total}${ext.toLowerCase()}` : ext;
+  return total > 0 ? String(total) : "·";
+}
+
+function runsFromBall(e: BallEvent): number {
+  return (e.runsOffBat ?? 0) + (e.extras?.runs ?? 0);
+}
+
+function getOversPerBowler(events: BallEvent[]): Record<string, BallEvent[][]> {
+  const ballsPerBowler: Record<string, BallEvent[]> = {};
+  for (const e of events) {
+    const bid = e.bowlerId;
+    if (bid) {
+      if (!ballsPerBowler[bid]) ballsPerBowler[bid] = [];
+      ballsPerBowler[bid].push(e);
+    }
+  }
+  const out: Record<string, BallEvent[][]> = {};
+  for (const [bid, balls] of Object.entries(ballsPerBowler)) {
+    const byOver: Record<number, BallEvent[]> = {};
+    for (const e of balls) {
+      const o = e.overNumber ?? 0;
+      if (!byOver[o]) byOver[o] = [];
+      byOver[o].push(e);
+    }
+    out[bid] = Object.keys(byOver)
+      .sort((a, b) => Number(a) - Number(b))
+      .map((k) => byOver[Number(k)]);
+  }
+  return out;
+}
 
 interface Player {
   _id: string;
@@ -26,6 +69,7 @@ export default function ScorecardPage() {
   const [playersMap, setPlayersMap] = useState<Record<string, string>>({});
   const [teamsMap, setTeamsMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [viewOvers, setViewOvers] = useState<{ inningsIndex: number; bowlerId: string } | null>(null);
 
   useEffect(() => {
     const id = typeof window !== "undefined" ? window.location.pathname.split("/")[2] : "";
@@ -120,6 +164,7 @@ export default function ScorecardPage() {
           const bowlOrder = match.teamAId === innings.bowlingTeamId ? (match.playingXI_A ?? []) : (match.playingXI_B ?? []);
           const battingCard = computeBattingCard(events, batOrder);
           const bowlingFigs = computeBowlingFigures(events, rules, bowlOrder, bpo);
+          const oversPerBowler = getOversPerBowler(events);
 
           return (
             <div key={idx} className="bg-white rounded-xl shadow p-4">
@@ -180,21 +225,88 @@ export default function ScorecardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {bowlingFigs.filter((f) => f.overs > 0 || f.balls > 0).map((f) => (
-                      <tr key={f.playerId} className="border-b border-gray-100">
-                        <td className="py-1">{playersMap[f.playerId] ?? f.playerId}</td>
-                        <td className="text-right py-1">{f.overs}.{f.balls}</td>
-                        <td className="text-right py-1">{f.runsConceded}</td>
-                        <td className="text-right py-1">{f.wickets}</td>
-                        <td className="text-right py-1">{f.economy}</td>
-                      </tr>
-                    ))}
+                    {bowlingFigs.filter((f) => f.overs > 0 || f.balls > 0).map((f) => {
+                      const bowlerOvers = oversPerBowler[f.playerId] ?? [];
+                      const firstOverBalls = bowlerOvers[0] ?? [];
+                      return (
+                        <tr key={f.playerId} className="border-b border-gray-100">
+                          <td className="py-1">
+                            <div>{playersMap[f.playerId] ?? f.playerId}</div>
+                            {firstOverBalls.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {firstOverBalls.map((e) => (
+                                  <span
+                                    key={e._id}
+                                    className="inline-flex items-center justify-center min-w-[26px] px-1 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-900 font-medium text-xs"
+                                  >
+                                    {formatBallChip(e)}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {bowlerOvers.length > 0 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs mt-0.5 -ml-1 text-amber-700 hover:text-amber-900 p-0"
+                                onClick={() => setViewOvers({ inningsIndex: idx, bowlerId: f.playerId })}
+                              >
+                                View overs
+                              </Button>
+                            )}
+                          </td>
+                          <td className="text-right py-1 align-top">{f.overs}.{f.balls}</td>
+                          <td className="text-right py-1 align-top">{f.runsConceded}</td>
+                          <td className="text-right py-1 align-top">{f.wickets}</td>
+                          <td className="text-right py-1 align-top">{f.economy}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             </div>
           );
         })}
+
+        {/* View overs – ball-by-ball per over for selected bowler */}
+        <Dialog open={!!viewOvers} onOpenChange={(open) => !open && setViewOvers(null)}>
+          <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-primary">
+                {viewOvers && (playersMap[viewOvers.bowlerId] ?? viewOvers.bowlerId)} – Overs
+              </DialogTitle>
+            </DialogHeader>
+            {viewOvers && (() => {
+              const inn = match.innings?.[viewOvers.inningsIndex];
+              const evts: BallEvent[] = inn?.events ?? [];
+              const overs = getOversPerBowler(evts)[viewOvers.bowlerId] ?? [];
+              return (
+                <div className="space-y-3 py-2">
+                  {overs.map((overBalls, i) => (
+                    <div key={i}>
+                      <p className="text-xs font-medium text-gray-600 mb-1.5">Over {i + 1}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {overBalls.map((e) => (
+                          <span
+                            key={e._id}
+                            className="inline-flex items-center justify-center min-w-[32px] px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-medium text-sm"
+                          >
+                            {formatBallChip(e)}
+                          </span>
+                        ))}
+                        <span className="text-xs text-gray-500 self-center ml-1 tabular-nums">
+                          = {overBalls.reduce((s, e) => s + runsFromBall(e), 0)} runs
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

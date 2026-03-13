@@ -191,7 +191,8 @@ export function getCurrentBatters(
       const outId = e.wicket.batterOutId;
       const nextIdx = Math.max(strikerIdx, nonStrikerIdx) + 1;
       if (nextIdx >= battingOrder.length) {
-        return { strikerId: battingOrder[strikerIdx]!, nonStrikerId: battingOrder[nonStrikerIdx] ?? "" };
+        const survivor = outId === battingOrder[strikerIdx] ? battingOrder[nonStrikerIdx] : battingOrder[strikerIdx];
+        return { strikerId: survivor ?? "", nonStrikerId: "" };
       }
       if (outId === battingOrder[strikerIdx]) {
         strikerIdx = nextIdx;
@@ -266,7 +267,8 @@ export function getCurrentBattersSimple(
       const outId = e.wicket.batterOutId;
       const nextMan = Math.max(idx1, idx2) + 1;
       if (nextMan >= battingOrder.length) {
-        return { strikerId: battingOrder[strikerIsFirst ? idx1 : idx2]!, nonStrikerId: battingOrder[strikerIsFirst ? idx2 : idx1]! };
+        const survivor = outId === battingOrder[idx1] ? battingOrder[idx2] : battingOrder[idx1];
+        return { strikerId: survivor ?? "", nonStrikerId: "" };
       }
       if (outId === battingOrder[idx1]) {
         idx1 = nextMan;
