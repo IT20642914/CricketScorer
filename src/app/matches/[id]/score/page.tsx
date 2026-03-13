@@ -12,8 +12,10 @@ import {
   ballCounts,
   computeBattingCard,
   computeBowlingFigures,
+  nextOverAndBall,
 } from "@/lib/engine";
 import type { Match, BallEvent, RulesConfig } from "@/lib/types";
+import { saveMatchToLocal, getMatchFromLocal, removeMatchFromLocal } from "@/lib/scorecard-db";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -92,6 +94,11 @@ export default function ScorePage() {
   /** Normal innings: opening batting pair (striker & non-striker) before scoring */
   const [openingStrikerId, setOpeningStrikerId] = useState("");
   const [openingNonStrikerId, setOpeningNonStrikerId] = useState("");
+  /** Queue for syncing balls to server one-by-one so UI is never blocked (IndexedDB + optimistic). */
+  const syncQueueRef = useRef<{ body: Record<string, unknown>; previousMatch: Match }[]>([]);
+  const isProcessingQueueRef = useRef(false);
+  /** Number of balls still waiting to sync (so we can disable Undo until queue is empty). */
+  const [syncPendingCount, setSyncPendingCount] = useState(0);
 
   const loadMatch = useCallback(async (id: string) => {
     const [mRes, pRes, tRes] = await Promise.all([
@@ -104,6 +111,7 @@ export default function ScorePage() {
     const teams: Team[] = await tRes.json();
     if (m._id) {
       setMatch(m);
+      saveMatchToLocal(id, m);
       const inn = m.innings?.[m.innings.length - 1];
       const bowl = m.teamAId === (inn?.bowlingTeamId) ? (m.playingXI_A ?? []) : (m.playingXI_B ?? []);
       if (inn?.initialBowlerId) setCurrentBowlerId(inn.initialBowlerId);
@@ -127,6 +135,11 @@ export default function ScorePage() {
     const id = typeof window !== "undefined" ? window.location.pathname.split("/")[2] : "";
     if (id) {
       setMatchId(id);
+      getMatchFromLocal(id).then((cached) => {
+        if (cached && typeof cached === "object" && "_id" in cached) {
+          setMatch(cached as Match);
+        }
+      });
       loadMatch(id);
     }
   }, [loadMatch]);
@@ -390,11 +403,78 @@ export default function ScorePage() {
     }
   }
 
+  /** Apply one ball to a match (for optimistic update and queue re-apply). */
+  function applyOptimisticBall(m: Match, body: Record<string, unknown>): Match {
+    const r = m.rulesConfig ?? rules;
+    const innings = m.innings ?? [];
+    const lastIdx = innings.length - 1;
+    const currentInn = lastIdx >= 0 ? innings[lastIdx] : null;
+    const events = currentInn?.events ?? [];
+    const bpo = currentInn?.ballsPerOver ?? r.ballsPerOver;
+    const { overNumber, ballInOver } = nextOverAndBall(events, bpo, r);
+    const optimisticEvent = {
+      _id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      createdAt: new Date().toISOString(),
+      ...body,
+      overNumber,
+      ballInOver,
+    } as BallEvent;
+    const newEvents = [...events, optimisticEvent];
+    const updatedInnings = innings.map((inn, i) =>
+      i === lastIdx ? { ...inn, events: newEvents } : inn
+    );
+    return { ...m, innings: updatedInnings };
+  }
+
+  const processSyncQueue = useCallback(() => {
+    if (syncQueueRef.current.length === 0) {
+      isProcessingQueueRef.current = false;
+      return;
+    }
+    if (isProcessingQueueRef.current) return;
+    isProcessingQueueRef.current = true;
+    const item = syncQueueRef.current[0]!;
+    const body = item.body;
+    fetch(`/api/matches/${matchId}/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.match) {
+          const serverMatch = typeof data.match === "object" && data.match !== null ? { ...data.match } : data.match;
+          setMatch(serverMatch);
+          saveMatchToLocal(matchId!, serverMatch);
+          syncQueueRef.current = syncQueueRef.current.slice(1);
+          setSyncPendingCount((c) => Math.max(0, c - 1));
+          // Keep UI showing all remaining queued balls (no flicker)
+          let displayMatch = serverMatch;
+          for (let i = 0; i < syncQueueRef.current.length; i++) {
+            displayMatch = applyOptimisticBall(displayMatch, syncQueueRef.current[i]!.body);
+          }
+          if (syncQueueRef.current.length > 0) setMatch(displayMatch);
+        } else {
+          setMatch(item.previousMatch);
+          syncQueueRef.current = syncQueueRef.current.slice(1);
+          setSyncPendingCount((c) => Math.max(0, c - 1));
+        }
+        isProcessingQueueRef.current = false;
+        processSyncQueue();
+      })
+      .catch(() => {
+        setMatch(item.previousMatch);
+        syncQueueRef.current = syncQueueRef.current.slice(1);
+        setSyncPendingCount((c) => Math.max(0, c - 1));
+        isProcessingQueueRef.current = false;
+        processSyncQueue();
+      });
+  }, [matchId]);
+
   async function addBall(payload: { runsOffBat: number; extras?: { type: "WD" | "NB" | "B" | "LB" | null; runs: number }; wicket?: { kind: string; batterOutId: string; fielderId?: string }; newBatterId?: string }) {
-    if (!matchId || sending) return;
-    setSending(true);
-    // If wicket + new batter selected: update batting order so selected batter is next, then add wicket event
+    if (!matchId) return;
     if (payload.wicket && payload.newBatterId && match) {
+      setSending(true);
       const newOrder = battingOrder.slice(0, nextManIdx).concat(payload.newBatterId).concat(battingOrder.slice(nextManIdx).filter((id) => id !== payload.newBatterId));
       const updatedInnings = [...(match.innings ?? [])];
       const lastIdx = updatedInnings.length - 1;
@@ -409,9 +489,8 @@ export default function ScorePage() {
         });
         const patchData = await patchRes.json();
         if (patchData._id) setMatch(patchData);
-      } catch (_) {
+      } finally {
         setSending(false);
-        return;
       }
     }
     const body = {
@@ -422,22 +501,19 @@ export default function ScorePage() {
       extras: payload.extras ?? { type: null, runs: 0 },
       wicket: payload.wicket,
     };
-    // Runs and balls are always attributed to strikerId (the facing batter); manual swap only changes who is facing next.
-    const res = await fetch(`/api/matches/${matchId}/events`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (data.match) {
-      setMatch(typeof data.match === "object" && data.match !== null ? { ...data.match } : data.match);
-      setStrikerNonStrikerSwapped(false);
-    }
+    if (!match) return;
+    const previousMatch = { ...match, innings: match.innings?.map((i) => ({ ...i, events: [...(i.events ?? [])] })) };
+    const optimisticMatch = applyOptimisticBall(match, body);
+    setMatch(optimisticMatch);
+    setStrikerNonStrikerSwapped(false);
+    saveMatchToLocal(matchId, optimisticMatch);
+    syncQueueRef.current = [...syncQueueRef.current, { body, previousMatch }];
+    setSyncPendingCount((c) => c + 1);
+    processSyncQueue();
     setShowWicket(false);
     setWicketStep(1);
     setNewBatterId("");
     setShowByesRuns(null);
-    setSending(false);
   }
 
   async function undoLast() {
@@ -523,6 +599,7 @@ export default function ScorePage() {
       setMatch(data);
       setShowResultModal(false);
       setShowInningsOver(false);
+      removeMatchFromLocal(matchId);
       router.push(`/matches/${matchId}/scorecard`);
     }
     setSending(false);
@@ -760,7 +837,7 @@ export default function ScorePage() {
             <button
               key={r}
               onClick={() => addBall({ runsOffBat: r })}
-              disabled={sending || !currentBowlerId || chaseComplete}
+              disabled={!currentBowlerId || chaseComplete}
               className="min-h-[52px] py-4 rounded-xl bg-cricket-green text-white font-bold text-xl shadow-lg border-2 border-cricket-green/80 active:scale-95 transition-transform touch-manipulation disabled:opacity-50 disabled:active:scale-100"
             >
               {r}
@@ -772,28 +849,28 @@ export default function ScorePage() {
         <div className="grid grid-cols-4 gap-2 mb-4">
           <button
             onClick={() => addBall({ runsOffBat: 0, extras: { type: "WD", runs: rules.wideRuns } })}
-            disabled={sending || !currentBowlerId || chaseComplete}
+            disabled={!currentBowlerId || chaseComplete}
             className="min-h-[48px] py-3 rounded-xl bg-amber-500 text-white font-semibold text-sm shadow-md border border-amber-600/50 active:scale-95 touch-manipulation disabled:opacity-50"
           >
             Wide
           </button>
           <button
             onClick={() => { setShowByesRuns(null); setShowNoBallRuns(!showNoBallRuns); }}
-            disabled={sending || !currentBowlerId || chaseComplete}
+            disabled={!currentBowlerId || chaseComplete}
             className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow-md border active:scale-95 touch-manipulation disabled:opacity-50 ${showNoBallRuns ? "ring-2 ring-cricket-green bg-white border-cricket-green text-gray-900" : "bg-amber-600 text-white border-amber-700/50"}`}
           >
             No ball
           </button>
           <button
             onClick={() => { setShowNoBallRuns(false); setShowByesRuns(showByesRuns === "B" ? null : "B"); }}
-            disabled={sending || !currentBowlerId || chaseComplete}
+            disabled={!currentBowlerId || chaseComplete}
             className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow-md border active:scale-95 touch-manipulation disabled:opacity-50 ${showByesRuns === "B" ? "ring-2 ring-cricket-green bg-white border-cricket-green text-gray-900" : "bg-white border-amber-300 text-amber-900"}`}
           >
             Byes
           </button>
           <button
             onClick={() => { setShowNoBallRuns(false); setShowByesRuns(showByesRuns === "LB" ? null : "LB"); }}
-            disabled={sending || !currentBowlerId || chaseComplete}
+            disabled={!currentBowlerId || chaseComplete}
             className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow-md border active:scale-95 touch-manipulation disabled:opacity-50 ${showByesRuns === "LB" ? "ring-2 ring-cricket-green bg-white border-cricket-green text-gray-900" : "bg-white border-amber-200 text-amber-800"}`}
           >
             Leg byes
@@ -812,7 +889,7 @@ export default function ScorePage() {
                     addBall({ runsOffBat: r, extras: { type: "NB", runs: rules.noBallRuns } });
                     setShowNoBallRuns(false);
                   }}
-                  disabled={sending || chaseComplete}
+                  disabled={chaseComplete}
                   className="w-12 h-12 rounded-lg bg-white border-2 border-amber-500 text-amber-900 font-bold shadow active:scale-95 touch-manipulation"
                 >
                   {r}
@@ -831,7 +908,7 @@ export default function ScorePage() {
                 <button
                   key={r}
                   onClick={() => addBall({ runsOffBat: 0, extras: { type: showByesRuns, runs: r } })}
-                  disabled={sending || chaseComplete}
+                  disabled={chaseComplete}
                   className="w-12 h-12 rounded-lg bg-white border-2 border-amber-400 text-amber-900 font-bold shadow active:scale-95 touch-manipulation"
                 >
                   {r}
@@ -845,7 +922,7 @@ export default function ScorePage() {
         <div className="flex gap-2 flex-wrap">
           <Button
             onClick={() => { setWicketStep(1); setNewBatterId(""); setWicketBatterId(""); setShowWicket(true); }}
-            disabled={sending || !currentBowlerId || chaseComplete}
+            disabled={!currentBowlerId || chaseComplete}
             variant="destructive"
             className="min-h-[48px] px-4 rounded-xl shadow-md border-2 border-red-800/50"
           >
@@ -853,7 +930,7 @@ export default function ScorePage() {
           </Button>
           <Button
             onClick={undoLast}
-            disabled={sending || events.length === 0}
+            disabled={sending || syncPendingCount > 0 || events.length === 0}
             variant="outline"
             className="min-h-[48px] px-4 rounded-xl bg-white border-2 border-gray-300 text-gray-800 shadow-md hover:bg-gray-50"
           >

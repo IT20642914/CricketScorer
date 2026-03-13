@@ -16,6 +16,21 @@ export function ballCounts(e: BallEvent, rules: RulesConfig): boolean {
   return true;
 }
 
+/** Next over number and ball-in-over for appending an event (for optimistic updates). */
+export function nextOverAndBall(
+  events: BallEvent[],
+  ballsPerOver: number,
+  rules: RulesConfig
+): { overNumber: number; ballInOver: number } {
+  let logicalBalls = 0;
+  for (const e of events) {
+    if (ballCounts(e, rules)) logicalBalls += 1;
+  }
+  const overNumber = Math.floor(logicalBalls / ballsPerOver) + 1;
+  const ballInOver = (logicalBalls % ballsPerOver) + 1;
+  return { overNumber, ballInOver };
+}
+
 /** Compute innings summary from events and rules. */
 export function computeInningsSummary(
   events: BallEvent[],
