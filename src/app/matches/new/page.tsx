@@ -441,6 +441,14 @@ function NewMatchContent() {
               />
               <Label htmlFor="nbCounts" className="cursor-pointer font-normal text-sm">No-ball counts as ball</Label>
             </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="lastManChance"
+                checked={state.rules.lastManStandingRule ?? false}
+                onCheckedChange={(checked) => setState((s) => ({ ...s, rules: { ...s.rules, lastManStandingRule: !!checked } }))}
+              />
+              <Label htmlFor="lastManChance" className="cursor-pointer font-normal text-sm">Last man chance</Label>
+            </div>
           </>
         )}
 
@@ -505,6 +513,9 @@ function NewMatchContent() {
             <p className="text-sm text-muted-foreground">{state.matchName || "Match"} — {state.date}</p>
             <p className="text-sm">{teamA?.teamName} vs {teamB?.teamName}</p>
             <p className="text-sm">{state.rules.oversPerInnings} overs, {state.rules.ballsPerOver} balls/over</p>
+            {(state.rules.lastManStandingRule ?? false) && (
+              <p className="text-sm text-muted-foreground">Last man standing: on</p>
+            )}
             <p className="text-sm">Toss: {state.tossWinnerTeamId === state.teamAId ? teamA?.teamName : teamB?.teamName} chose to {state.tossDecision === "BAT" ? "bat" : "field"}</p>
             <p className="text-xs text-muted-foreground">Batting first: {state.tossDecision === "BAT" ? (state.tossWinnerTeamId === state.teamAId ? teamA?.teamName : teamB?.teamName) : (state.tossWinnerTeamId === state.teamAId ? teamB?.teamName : teamA?.teamName)}</p>
           </div>

@@ -183,8 +183,9 @@ export function getCurrentBatters(
   let strikeEnd = "striker"; // who is on strike: "striker" = battingOrder[strikerIdx], "non" = battingOrder[nonStrikerIdx]
 
   for (const e of events) {
-    const runs = runsFromBall(e);
     const counts = ballCounts(e, rules);
+    // Only runs off the bat rotate strike (1, 3, 5). Extras like wide/no-ball do not.
+    const runsOffBatForRotation = e.runsOffBat ?? 0;
 
     if (e.wicket) {
       const outId = e.wicket.batterOutId;
@@ -203,8 +204,8 @@ export function getCurrentBatters(
       continue;
     }
 
-    // Strike rotation: odd runs swap ends
-    if (runs % 2 === 1) {
+    // Strike rotation: odd runs off bat only (1, 3, 5) swap ends. 0, 2, 4, 6 and extras do not.
+    if (runsOffBatForRotation % 2 === 1) {
       strikeEnd = strikeEnd === "striker" ? "non" : "striker";
     }
     // End of over: swap
@@ -257,8 +258,9 @@ export function getCurrentBattersSimple(
   let ballsInCurrentOver = 0;
 
   for (const e of events) {
-    const runs = runsFromBall(e);
     const counts = ballCounts(e, rules);
+    // Only runs off the bat rotate strike (1, 3, 5). Extras like wide/no-ball do not.
+    const runsOffBatForRotation = e.runsOffBat ?? 0;
 
     if (e.wicket) {
       const outId = e.wicket.batterOutId;
@@ -276,7 +278,7 @@ export function getCurrentBattersSimple(
       continue;
     }
 
-    if (runs % 2 === 1) strikerIsFirst = !strikerIsFirst;
+    if (runsOffBatForRotation % 2 === 1) strikerIsFirst = !strikerIsFirst;
     if (counts) {
       ballsInCurrentOver += 1;
       if (ballsInCurrentOver >= rules.ballsPerOver) {

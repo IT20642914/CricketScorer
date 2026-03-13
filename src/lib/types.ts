@@ -47,6 +47,7 @@ export const DEFAULT_RULES: RulesConfig = {
   noBallRuns: 1,
   wideCountsAsBall: false,
   noBallCountsAsBall: false,
+  lastManStandingRule: false,
 };
 
 export type ExtrasType = "WD" | "NB" | "B" | "LB" | null;

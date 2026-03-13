@@ -68,6 +68,11 @@ export default function ScorePage() {
   const [showNextBowler, setShowNextBowler] = useState(false);
   const [showInningsOver, setShowInningsOver] = useState(false);
   const [showByesRuns, setShowByesRuns] = useState<"B" | "LB" | null>(null);
+  const [showNoBallRuns, setShowNoBallRuns] = useState(false);
+  /** When true, next ball will use non-striker as striker and vice versa (swap ends). */
+  const [strikerNonStrikerSwapped, setStrikerNonStrikerSwapped] = useState(false);
+  /** In "Change bowler" sheet: who should be striker (so user can set striker when changing bowler). */
+  const [selectedStrikerForBowlerSheet, setSelectedStrikerForBowlerSheet] = useState<string>("");
   const [wicketKind, setWicketKind] = useState<"BOWLED" | "CAUGHT" | "LBW" | "RUN_OUT" | "STUMPED" | "HIT_WICKET" | "RETIRED">("BOWLED");
   const [wicketBatterId, setWicketBatterId] = useState("");
   const [wicketStep, setWicketStep] = useState<1 | 2>(1);
@@ -140,9 +145,59 @@ export default function ScorePage() {
   const { strikerId, nonStrikerId } = currentInnings
     ? getCurrentBattersSimple(events, battingOrder, { ...rules, ballsPerOver: effectiveBallsPerOver })
     : { strikerId: "", nonStrikerId: "" };
+  /** For display and next ball: swap if user tapped "Swap ends". */
+  const effectiveStrikerId = strikerNonStrikerSwapped ? nonStrikerId : strikerId;
+  const effectiveNonStrikerId = strikerNonStrikerSwapped ? strikerId : nonStrikerId;
+  /** Batting stats for current striker/non-striker (runs in balls). */
+  const strikerStats = battingCard.find((b) => b.playerId === effectiveStrikerId);
+  const nonStrikerStats = battingCard.find((b) => b.playerId === effectiveNonStrikerId);
+  /** Two batters at crease in fixed order (by batting order) so we only change S/NS tags, not names. */
+  const battersAtCreaseOrdered =
+    strikerId && nonStrikerId
+      ? [strikerId, nonStrikerId].sort((a, b) => battingOrder.indexOf(a) - battingOrder.indexOf(b))
+      : strikerId
+        ? [strikerId]
+        : [];
 
   const totalBallsBowled = summary?.totalBallsBowled ?? 0;
   const overJustFinished = totalBallsBowled > 0 && totalBallsBowled % effectiveBallsPerOver === 0;
+  /** Events in the current over only (for "This over" and bowling ball-by-ball). */
+  const currentOverEvents: BallEvent[] = (() => {
+    const currentOverStart = Math.floor(totalBallsBowled / effectiveBallsPerOver) * effectiveBallsPerOver;
+    let count = 0;
+    const out: BallEvent[] = [];
+    for (const e of events) {
+      if (count >= currentOverStart && count < currentOverStart + effectiveBallsPerOver) out.push(e);
+      if (ballCounts(e, rules)) count++;
+    }
+    return out;
+  })();
+  /** Balls the current striker/NS faced this over (for "S this over" boxes – runs always attributed to striker). */
+  const strikerBallsThisOver = currentOverEvents.filter((e) => e.strikerId === effectiveStrikerId);
+  const nonStrikerBallsThisOver = currentOverEvents.filter((e) => e.strikerId === effectiveNonStrikerId);
+  /** Format a ball for display: runs + W/nb/wd etc. Shows total in ( ) for extras so e.g. 6nb = 7 total. */
+  function formatBallChip(e: BallEvent): string {
+    const w = e.wicket ? "W" : "";
+    const ext = e.extras?.type ?? "";
+    const runsOffBat = e.runsOffBat ?? 0;
+    const extRuns = e.extras?.runs ?? 0;
+    const total = runsOffBat + extRuns;
+    if (w) return "W";
+    if (ext === "NB") {
+      if (total === 0) return "nb";
+      return runsOffBat > 0 ? `${runsOffBat}nb (${total})` : `${total}nb`;
+    }
+    if (ext === "WD") {
+      if (total === 0) return "wd";
+      return `${extRuns}wd (${total})`;
+    }
+    if (ext) return total > 0 ? `${total}${ext.toLowerCase()}` : ext;
+    return total > 0 ? String(total) : "·";
+  }
+  /** Runs from ball (for ball-by-ball display). */
+  function runsFromBallEvent(e: BallEvent): number {
+    return (e.runsOffBat ?? 0) + (e.extras?.runs ?? 0);
+  }
   /** After at least one over is complete, do not allow changing balls per over (only total overs per innings). */
   const oneOverComplete = totalBallsBowled >= effectiveBallsPerOver;
   /** Can only change bowler when 0 balls bowled in current over (start or after over complete). */
@@ -151,6 +206,10 @@ export default function ScorePage() {
   useEffect(() => {
     if (overJustFinished) setShowNextBowler(true);
   }, [overJustFinished]);
+
+  useEffect(() => {
+    if (showNextBowler) setSelectedStrikerForBowlerSheet(effectiveStrikerId);
+  }, [showNextBowler, effectiveStrikerId]);
 
   const inningsIndex = (match?.innings?.length ?? 1) - 1;
   const maxOversForInnings = currentInnings?.maxOvers ?? rules.oversPerInnings;
@@ -172,6 +231,13 @@ export default function ScorePage() {
   /** Batters who have not batted yet (next in order and after). Used for "new batter" selection after wicket. */
   const nextManIdx = 2 + (summary?.wickets ?? 0);
   const notYetBatted = battingOrder.slice(nextManIdx);
+  /** Players who were out "Retired hurt" and can come back to bat. */
+  const retiredHurtIds = (events ?? [])
+    .filter((e) => e.wicket?.kind === "RETIRED")
+    .map((e) => e.wicket!.batterOutId)
+    .filter((id): id is string => !!id);
+  /** Options for next batter: not yet batted + retired hurt (who may return). */
+  const nextBatterOptions = [...new Set([...notYetBatted, ...retiredHurtIds])];
 
   /** Super Over: must select 2 batsmen + 1 bowler before scoring (for SO1 and SO2, and any further Super Overs). */
   const needSuperOverSelection =
@@ -321,20 +387,24 @@ export default function ScorePage() {
       }
     }
     const body = {
-      strikerId,
-      nonStrikerId,
+      strikerId: effectiveStrikerId,
+      nonStrikerId: effectiveNonStrikerId,
       bowlerId: currentBowlerId || bowlingOrder[0],
       runsOffBat: payload.runsOffBat ?? 0,
       extras: payload.extras ?? { type: null, runs: 0 },
       wicket: payload.wicket,
     };
+    // Runs and balls are always attributed to strikerId (the facing batter); manual swap only changes who is facing next.
     const res = await fetch(`/api/matches/${matchId}/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
     const data = await res.json();
-    if (data.match) setMatch(data.match);
+    if (data.match) {
+      setMatch(typeof data.match === "object" && data.match !== null ? { ...data.match } : data.match);
+      setStrikerNonStrikerSwapped(false);
+    }
     setShowWicket(false);
     setWicketStep(1);
     setNewBatterId("");
@@ -381,6 +451,7 @@ export default function ScorePage() {
 
   function selectNextBowler(id: string) {
     setCurrentBowlerId(id);
+    setStrikerNonStrikerSwapped(selectedStrikerForBowlerSheet === nonStrikerId);
     setShowNextBowler(false);
   }
 
@@ -601,9 +672,43 @@ export default function ScorePage() {
           )}
         </div>
 
-        {/* Striker & bowler */}
-        <div className="flex items-center justify-between mb-4 p-3 rounded-xl bg-white shadow-md border border-gray-200/90 text-sm">
-          <span className="text-gray-700">Striker: <span className="font-semibold text-gray-900">{playersMap[strikerId] ?? strikerId}</span></span>
+        {/* Striker, non-striker & bowler – names fixed; only S/NS tags change when swap */}
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4 p-3 rounded-xl bg-white shadow-md border border-gray-200/90 text-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            {battersAtCreaseOrdered.map((playerId) => {
+              const isStriker = playerId === effectiveStrikerId;
+              const stats = battingCard.find((b) => b.playerId === playerId);
+              return (
+                <span key={playerId} className="inline-flex flex-col gap-0.5">
+                  <span className={`inline-flex items-center gap-1.5 ${isStriker ? "" : "text-gray-600"}`}>
+                    <span
+                      className={`rounded text-xs font-bold px-1.5 py-0.5 ${isStriker ? "bg-cricket-green text-white" : "bg-gray-400 text-white"}`}
+                      title={isStriker ? "Striker" : "Non-striker"}
+                    >
+                      {isStriker ? "S" : "NS"}
+                    </span>
+                    <span className={isStriker ? "font-semibold text-gray-900" : "font-medium text-gray-700"}>
+                      {playersMap[playerId] ?? playerId}
+                    </span>
+                  </span>
+                  {stats && (stats.runs > 0 || stats.balls > 0) && (
+                    <span className="text-xs text-gray-500 tabular-nums pl-6">{stats.runs} in {stats.balls} balls</span>
+                  )}
+                </span>
+              );
+            })}
+            {strikerId && nonStrikerId && strikerId !== nonStrikerId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-lg text-xs"
+                onClick={() => setStrikerNonStrikerSwapped((s) => !s)}
+              >
+                {strikerNonStrikerSwapped ? "Swap again" : "Swap ends"}
+              </Button>
+            )}
+          </div>
           {canChangeBowler ? (
             <button
               type="button"
@@ -645,27 +750,49 @@ export default function ScorePage() {
             Wide
           </button>
           <button
-            onClick={() => addBall({ runsOffBat: 0, extras: { type: "NB", runs: rules.noBallRuns } })}
+            onClick={() => { setShowByesRuns(null); setShowNoBallRuns(!showNoBallRuns); }}
             disabled={sending || !currentBowlerId || chaseComplete}
-            className="min-h-[48px] py-3 rounded-xl bg-amber-600 text-white font-semibold text-sm shadow-md border border-amber-700/50 active:scale-95 touch-manipulation disabled:opacity-50"
+            className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow-md border active:scale-95 touch-manipulation disabled:opacity-50 ${showNoBallRuns ? "ring-2 ring-cricket-green bg-white border-cricket-green text-gray-900" : "bg-amber-600 text-white border-amber-700/50"}`}
           >
             No ball
           </button>
           <button
-            onClick={() => setShowByesRuns(showByesRuns === "B" ? null : "B")}
+            onClick={() => { setShowNoBallRuns(false); setShowByesRuns(showByesRuns === "B" ? null : "B"); }}
             disabled={sending || !currentBowlerId || chaseComplete}
             className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow-md border active:scale-95 touch-manipulation disabled:opacity-50 ${showByesRuns === "B" ? "ring-2 ring-cricket-green bg-white border-cricket-green text-gray-900" : "bg-white border-amber-300 text-amber-900"}`}
           >
             Byes
           </button>
           <button
-            onClick={() => setShowByesRuns(showByesRuns === "LB" ? null : "LB")}
+            onClick={() => { setShowNoBallRuns(false); setShowByesRuns(showByesRuns === "LB" ? null : "LB"); }}
             disabled={sending || !currentBowlerId || chaseComplete}
             className={`min-h-[48px] py-3 rounded-xl font-semibold text-sm shadow-md border active:scale-95 touch-manipulation disabled:opacity-50 ${showByesRuns === "LB" ? "ring-2 ring-cricket-green bg-white border-cricket-green text-gray-900" : "bg-white border-amber-200 text-amber-800"}`}
           >
             Leg byes
           </button>
         </div>
+
+        {/* No-ball: runs off the bat 0–6 */}
+        {showNoBallRuns && (
+          <div className="mb-4 p-3 bg-white rounded-xl border border-amber-600/50 shadow-md">
+            <p className="text-xs font-medium text-amber-900 mb-2">No ball — runs off the bat (0–6)</p>
+            <div className="flex flex-wrap gap-2">
+              {[0, 1, 2, 3, 4, 5, 6].map((r) => (
+                <button
+                  key={r}
+                  onClick={() => {
+                    addBall({ runsOffBat: r, extras: { type: "NB", runs: rules.noBallRuns } });
+                    setShowNoBallRuns(false);
+                  }}
+                  disabled={sending || chaseComplete}
+                  className="w-12 h-12 rounded-lg bg-white border-2 border-amber-500 text-amber-900 font-bold shadow active:scale-95 touch-manipulation"
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Byes / Leg byes runs: 0 1 2 3 4 */}
         {showByesRuns && (
@@ -716,34 +843,54 @@ export default function ScorePage() {
           )}
         </div>
 
-        {/* This over chips */}
-        {events.length > 0 && (() => {
-          let count = 0;
-          const thisOver: BallEvent[] = [];
-          for (let i = events.length - 1; i >= 0; i--) {
-            const e = events[i];
-            if (ballCounts(e, rules)) count++;
-            thisOver.unshift(e);
-            if (count >= effectiveBallsPerOver) break;
-          }
-          return (
-            <div className="mt-5 p-3 rounded-xl bg-white/95 shadow border border-gray-200">
-              <p className="text-xs font-medium text-gray-700 mb-2">This over</p>
-              <div className="flex flex-wrap gap-1.5">
-                {thisOver.map((e) => {
-                  const r = (e.runsOffBat ?? 0) + (e.extras?.runs ?? 0);
-                  const w = e.wicket ? "W" : "";
-                  const ext = e.extras?.type ?? "";
-                  return (
-                    <span key={e._id} className="inline-flex items-center justify-center min-w-[32px] px-2 py-1.5 rounded-lg bg-gray-100 border border-gray-200 text-gray-900 font-medium text-sm">
-                      {w || ext || (r > 0 ? r : "·")}
-                    </span>
-                  );
-                })}
-              </div>
+        {/* This over – current over only; NB shows runs (e.g. 4nb) */}
+        {currentOverEvents.length > 0 && (
+          <div className="mt-5 p-3 rounded-xl bg-white/95 shadow border border-gray-200">
+            <p className="text-xs font-medium text-gray-700 mb-2">This over</p>
+            <div className="flex flex-wrap gap-1.5">
+              {currentOverEvents.map((e) => (
+                <span key={e._id} className="inline-flex items-center justify-center min-w-[32px] px-2 py-1.5 rounded-lg bg-gray-100 border border-gray-200 text-gray-900 font-medium text-sm">
+                  {formatBallChip(e)}
+                </span>
+              ))}
             </div>
-          );
-        })()}
+            {/* S / NS this over – runs per ball (same style as Bowling tab) so user sees who faced what */}
+            {effectiveStrikerId && strikerBallsThisOver.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <p className="text-xs font-medium text-gray-700 mb-1.5">
+                  S this over – {(playersMap[effectiveStrikerId] ?? effectiveStrikerId)} (runs per ball)
+                </p>
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  {strikerBallsThisOver.map((e) => (
+                    <span key={e._id} className="inline-flex items-center justify-center min-w-[36px] px-2 py-1.5 rounded-lg bg-cricket-green/15 border border-cricket-green/40 text-cricket-green font-medium text-sm">
+                      {formatBallChip(e)}
+                    </span>
+                  ))}
+                  <span className="text-xs text-gray-500 tabular-nums ml-1">
+                    = {strikerBallsThisOver.reduce((s, e) => s + runsFromBallEvent(e), 0)} runs
+                  </span>
+                </div>
+              </div>
+            )}
+            {effectiveNonStrikerId && effectiveNonStrikerId !== effectiveStrikerId && nonStrikerBallsThisOver.length > 0 && (
+              <div className="mt-2">
+                <p className="text-xs font-medium text-gray-600 mb-1.5">
+                  NS this over – {(playersMap[effectiveNonStrikerId] ?? effectiveNonStrikerId)} (runs per ball)
+                </p>
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  {nonStrikerBallsThisOver.map((e) => (
+                    <span key={e._id} className="inline-flex items-center justify-center min-w-[36px] px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-medium text-sm">
+                      {formatBallChip(e)}
+                    </span>
+                  ))}
+                  <span className="text-xs text-gray-500 tabular-nums ml-1">
+                    = {nonStrikerBallsThisOver.reduce((s, e) => s + runsFromBallEvent(e), 0)} runs
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
           </TabsContent>
 
           <TabsContent value="batting" className="mt-0">
@@ -821,6 +968,22 @@ export default function ScorePage() {
             </div>
             {bowlingFigures.length === 0 && (
               <p className="px-4 py-6 text-center text-gray-500 text-sm">No bowling figures yet</p>
+            )}
+            {/* This over – runs ball by ball (same structure as Score tab) */}
+            {currentOverEvents.length > 0 && (
+              <div className="mt-4 mx-4 p-3 rounded-xl bg-white border border-gray-200 shadow-sm">
+                <p className="text-xs font-medium text-gray-700 mb-2">This over – runs per ball</p>
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  {currentOverEvents.map((e) => (
+                    <span key={e._id} className="inline-flex items-center justify-center min-w-[36px] px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-medium text-sm">
+                      {formatBallChip(e)}
+                    </span>
+                  ))}
+                  <span className="text-xs text-gray-500 ml-2 tabular-nums">
+                    = {currentOverEvents.reduce((s, e) => s + runsFromBallEvent(e), 0)} runs
+                  </span>
+                </div>
+              </div>
             )}
           </div>
           </TabsContent>
@@ -977,28 +1140,83 @@ export default function ScorePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Change bowler (after over or tap anytime) */}
+      {/* Change bowler (after over or tap anytime) – also set striker for next over */}
       <Sheet open={showNextBowler && !shouldEnd.end} onOpenChange={(open) => !open && setShowNextBowler(false)}>
         <SheetContent side="bottom" className="rounded-t-2xl max-h-[80vh]">
           <SheetHeader>
             <SheetTitle className="text-primary">{overJustFinished ? "Over complete" : "Change bowler"}</SheetTitle>
           </SheetHeader>
-          <div className="p-4 max-h-64 overflow-y-auto space-y-2">
-            {bowlingOrder
-              .filter((id) => id !== currentBowlerId)
-              .map((id) => (
-                <Button
-                  key={id}
-                  variant="secondary"
-                  className="w-full justify-start h-12 rounded-xl"
-                  onClick={() => selectNextBowler(id)}
-                >
-                  {playersMap[id] ?? id}
-                </Button>
-              ))}
-            {bowlingOrder.filter((id) => id !== currentBowlerId).length === 0 && (
-              <p className="text-sm text-muted-foreground">No other bowler available.</p>
+          <div className="p-4 max-h-[70vh] overflow-y-auto space-y-5">
+            {/* Who is on strike (optional) – S = striker, NS = non-striker */}
+            {strikerId && nonStrikerId && strikerId !== nonStrikerId && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">Who is on strike? (S = striker, NS = non-striker)</p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={selectedStrikerForBowlerSheet === strikerId ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 h-11 rounded-xl justify-start gap-2"
+                    onClick={() => setSelectedStrikerForBowlerSheet(strikerId)}
+                  >
+                    <span className={`rounded text-xs font-bold px-1.5 py-0.5 ${selectedStrikerForBowlerSheet === strikerId ? "bg-white/20" : "bg-gray-200 text-gray-700"}`}>S</span>
+                    {playersMap[strikerId] ?? strikerId}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={selectedStrikerForBowlerSheet === nonStrikerId ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 h-11 rounded-xl justify-start gap-2"
+                    onClick={() => setSelectedStrikerForBowlerSheet(nonStrikerId)}
+                  >
+                    <span className={`rounded text-xs font-bold px-1.5 py-0.5 ${selectedStrikerForBowlerSheet === nonStrikerId ? "bg-white/20" : "bg-gray-200 text-gray-700"}`}>NS</span>
+                    {playersMap[nonStrikerId] ?? nonStrikerId}
+                  </Button>
+                </div>
+              </div>
             )}
+            {/* Select bowler */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Select bowler</p>
+              {bowlingOrder
+                .filter((id) => id !== currentBowlerId)
+                .map((id) => (
+                  <Button
+                    key={id}
+                    variant="secondary"
+                    className="w-full justify-start h-12 rounded-xl"
+                    onClick={() => selectNextBowler(id)}
+                  >
+                    {playersMap[id] ?? id}
+                  </Button>
+                ))}
+              {bowlingOrder.filter((id) => id !== currentBowlerId).length === 0 ? (
+                <>
+                  <p className="text-sm text-muted-foreground">No other bowler available.</p>
+                  <Button
+                    variant="default"
+                    className="w-full h-12 rounded-xl mt-2"
+                    onClick={() => {
+                      setStrikerNonStrikerSwapped(selectedStrikerForBowlerSheet === nonStrikerId);
+                      setShowNextBowler(false);
+                    }}
+                  >
+                    Done (striker updated)
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="w-full h-11 rounded-xl mt-1"
+                  onClick={() => {
+                    setStrikerNonStrikerSwapped(selectedStrikerForBowlerSheet === nonStrikerId);
+                    setShowNextBowler(false);
+                  }}
+                >
+                  Keep current bowler
+                </Button>
+              )}
+            </div>
           </div>
         </SheetContent>
       </Sheet>
@@ -1174,28 +1392,28 @@ export default function ScorePage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Batter out</Label>
+                  <Label>Who is out? (current striker or non-striker)</Label>
                   <div className="flex flex-wrap gap-2">
-                    {strikerId && (
+                    {effectiveStrikerId && (
                       <Button
                         type="button"
-                        variant={wicketBatterId === strikerId ? "default" : "outline"}
+                        variant={wicketBatterId === effectiveStrikerId ? "default" : "outline"}
                         size="sm"
                         className="h-10 rounded-xl flex-1 min-w-0"
-                        onClick={() => setWicketBatterId(strikerId)}
+                        onClick={() => setWicketBatterId(effectiveStrikerId)}
                       >
-                        {playersMap[strikerId] ?? strikerId}
+                        {playersMap[effectiveStrikerId] ?? effectiveStrikerId}
                       </Button>
                     )}
-                    {nonStrikerId && nonStrikerId !== strikerId && (
+                    {effectiveNonStrikerId && effectiveNonStrikerId !== effectiveStrikerId && (
                       <Button
                         type="button"
-                        variant={wicketBatterId === nonStrikerId ? "default" : "outline"}
+                        variant={wicketBatterId === effectiveNonStrikerId ? "default" : "outline"}
                         size="sm"
                         className="h-10 rounded-xl flex-1 min-w-0"
-                        onClick={() => setWicketBatterId(nonStrikerId)}
+                        onClick={() => setWicketBatterId(effectiveNonStrikerId)}
                       >
-                        {playersMap[nonStrikerId] ?? nonStrikerId}
+                        {playersMap[effectiveNonStrikerId] ?? effectiveNonStrikerId}
                       </Button>
                     )}
                   </div>
@@ -1217,12 +1435,14 @@ export default function ScorePage() {
             )}
             {wicketStep === 2 && (
               <>
-                <p className="text-sm text-muted-foreground">Select the new batter (not yet batted)</p>
+                <p className="text-sm text-muted-foreground">
+                  Select the new batter (not yet batted or retired hurt who can return)
+                </p>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {notYetBatted.length === 0 ? (
+                  {nextBatterOptions.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No batters left (innings will end).</p>
                   ) : (
-                    notYetBatted.map((id) => (
+                    nextBatterOptions.map((id) => (
                       <Button
                         key={id}
                         variant={newBatterId === id ? "default" : "outline"}
@@ -1230,6 +1450,7 @@ export default function ScorePage() {
                         onClick={() => setNewBatterId(id)}
                       >
                         {playersMap[id] ?? id}
+                        {retiredHurtIds.includes(id) ? " (retired hurt)" : ""}
                       </Button>
                     ))
                   )}
@@ -1242,7 +1463,7 @@ export default function ScorePage() {
                     variant="destructive"
                     onClick={() => {
                       if (!wicketBatterId) return;
-                      if (notYetBatted.length === 0) {
+                      if (nextBatterOptions.length === 0) {
                         addBall({ runsOffBat: 0, wicket: { kind: wicketKind, batterOutId: wicketBatterId } });
                       } else if (newBatterId) {
                         addBall({
@@ -1252,7 +1473,7 @@ export default function ScorePage() {
                         });
                       }
                     }}
-                    disabled={sending || (notYetBatted.length > 0 && !newBatterId)}
+                    disabled={sending || (nextBatterOptions.length > 0 && !newBatterId)}
                     className="flex-1 h-12 rounded-xl"
                   >
                     Confirm wicket

@@ -118,7 +118,7 @@ describe("getCurrentBattersSimple", () => {
     expect(r.strikerId).toBe("a");
     expect(r.nonStrikerId).toBe("b");
   });
-  it("rotates on odd runs", () => {
+  it("rotates on odd runs off bat (1, 3)", () => {
     const events: BallEvent[] = [
       { ...ev(1, 1, 1), strikerId: "a", nonStrikerId: "b" },
     ];
@@ -126,15 +126,48 @@ describe("getCurrentBattersSimple", () => {
     expect(r.strikerId).toBe("b");
     expect(r.nonStrikerId).toBe("a");
   });
+  it("does not rotate on 4 runs off bat", () => {
+    const events: BallEvent[] = [
+      { ...ev(1, 1, 4), strikerId: "a", nonStrikerId: "b" },
+    ];
+    const r = getCurrentBattersSimple(events, ["a", "b"], RULES);
+    expect(r.strikerId).toBe("a");
+    expect(r.nonStrikerId).toBe("b");
+  });
+  it("does not rotate on no-ball extras (only runs off bat count)", () => {
+    const events: BallEvent[] = [
+      { ...ev(1, 1, 0, { type: "NB", runs: 1 }), strikerId: "a", nonStrikerId: "b" },
+    ];
+    const r = getCurrentBattersSimple(events, ["a", "b"], RULES);
+    expect(r.strikerId).toBe("a");
+    expect(r.nonStrikerId).toBe("b");
+  });
 });
 
 describe("shouldEndInnings", () => {
+  const elevenBattingOrder = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"];
   it("ends when overs complete", () => {
     const events: BallEvent[] = Array.from({ length: 120 }, (_, i) =>
       ev(Math.floor(i / 6) + 1, (i % 6) + 1, 0)
     );
-    const r = shouldEndInnings(events, RULES, ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"]);
+    const r = shouldEndInnings(events, RULES, elevenBattingOrder);
     expect(r.end).toBe(true);
     expect(r.reason).toBe("OVERS_COMPLETE");
+  });
+  it("all out at 10 wickets when lastManStandingRule is false", () => {
+    const events: BallEvent[] = Array.from({ length: 10 }, (_, i) =>
+      ev(1, i + 1, 0, undefined, { kind: "BOWLED", batterOutId: elevenBattingOrder[i] })
+    );
+    const r = shouldEndInnings(events, { ...RULES, lastManStandingRule: false }, elevenBattingOrder);
+    expect(r.end).toBe(true);
+    expect(r.reason).toBe("ALL_OUT");
+  });
+  it("all out at 11 wickets when lastManStandingRule is true", () => {
+    const events: BallEvent[] = Array.from({ length: 11 }, (_, i) =>
+      ev(1, i + 1, 0, undefined, { kind: "BOWLED", batterOutId: elevenBattingOrder[i] })
+    );
+    const r = shouldEndInnings(events, { ...RULES, lastManStandingRule: true }, elevenBattingOrder);
+    expect(r.end).toBe(true);
+    expect(r.reason).toBe("ALL_OUT");
   });
 });
